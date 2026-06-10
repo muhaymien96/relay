@@ -1,0 +1,172 @@
+package dsl
+
+import (
+	"fmt"
+	"sort"
+	"strings"
+)
+
+// Marshal serializes a Request deterministically: fixed section order,
+// sorted keys within tables, so imports and edits produce minimal git diffs.
+func Marshal(r *Request) []byte {
+	var b strings.Builder
+	kv := func(k, v string) { fmt.Fprintf(&b, "%s = %s\n", k, quote(v)) }
+
+	kv("name", r.Name)
+	kv("method", r.Method)
+	kv("url", r.URL)
+
+	writeTable(&b, "query", r.Query)
+	writeTable(&b, "headers", r.Headers)
+	writeTable(&b, "vars", r.Vars)
+
+	if a := r.Auth; a != nil {
+		b.WriteString("\n[auth]\n")
+		kv("type", a.Type)
+		switch a.Type {
+		case "bearer":
+			kv("token", a.Token)
+		case "basic":
+			kv("username", a.Username)
+			kv("password", a.Password)
+		case "apikey":
+			kv("key", a.Key)
+			kv("value", a.Value)
+			if a.In != "" {
+				kv("in", a.In)
+			}
+		}
+	}
+
+	if body := r.Body; body != nil {
+		b.WriteString("\n[body]\n")
+		kv("type", body.Type)
+		if body.File != "" {
+			kv("file", body.File)
+		} else if body.Content != "" {
+			writeContent(&b, body.Content)
+		}
+	}
+
+	for _, a := range r.Assertions {
+		b.WriteString("\n[[assertions]]\n")
+		kv("type", a.Type)
+		if a.Path != "" {
+			kv("path", a.Path)
+		}
+		if a.Name != "" {
+			kv("name", a.Name)
+		}
+		if a.Equals != nil {
+			fmt.Fprintf(&b, "equals = %s\n", literal(a.Equals))
+		}
+		if a.Contains != "" {
+			kv("contains", a.Contains)
+		}
+		if a.MaxMs > 0 {
+			fmt.Fprintf(&b, "max_ms = %d\n", a.MaxMs)
+		}
+	}
+
+	return []byte(b.String())
+}
+
+func writeTable(b *strings.Builder, name string, m map[string]string) {
+	if len(m) == 0 {
+		return
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	fmt.Fprintf(b, "\n[%s]\n", name)
+	for _, k := range keys {
+		fmt.Fprintf(b, "%s = %s\n", key(k), quote(m[k]))
+	}
+}
+
+// writeContent prefers a multiline literal string (readable, diff-friendly)
+// and falls back to a basic string when the content can't be represented.
+// The content round-trips byte-exactly: no newline is appended.
+func writeContent(b *strings.Builder, s string) {
+	if multilineSafe(s) {
+		// The newline right after the opening ''' is trimmed by TOML; the
+		// closing delimiter sits on the same line unless the content itself
+		// ends with a newline.
+		fmt.Fprintf(b, "content = '''\n%s'''\n", s)
+		return
+	}
+	fmt.Fprintf(b, "content = %s\n", quote(s))
+}
+
+func multilineSafe(s string) bool {
+	if strings.Contains(s, "'''") || strings.HasSuffix(s, "'") {
+		return false
+	}
+	for _, r := range s {
+		if r < 0x20 && r != '\n' && r != '\t' {
+			return false
+		}
+	}
+	return true
+}
+
+func quote(s string) string {
+	var b strings.Builder
+	b.WriteByte('"')
+	for _, r := range s {
+		switch r {
+		case '"':
+			b.WriteString(`\"`)
+		case '\\':
+			b.WriteString(`\\`)
+		case '\n':
+			b.WriteString(`\n`)
+		case '\r':
+			b.WriteString(`\r`)
+		case '\t':
+			b.WriteString(`\t`)
+		default:
+			if r < 0x20 {
+				fmt.Fprintf(&b, `\u%04X`, r)
+			} else {
+				b.WriteRune(r)
+			}
+		}
+	}
+	b.WriteByte('"')
+	return b.String()
+}
+
+// key writes a TOML key, quoting it when it isn't a bare key.
+func key(s string) string {
+	for _, r := range s {
+		if !(r == '-' || r == '_' ||
+			(r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9')) {
+			return quote(s)
+		}
+	}
+	if s == "" {
+		return `""`
+	}
+	return s
+}
+
+func literal(v any) string {
+	switch x := v.(type) {
+	case string:
+		return quote(x)
+	case bool:
+		return fmt.Sprintf("%t", x)
+	case int64:
+		return fmt.Sprintf("%d", x)
+	case float64:
+		if x == float64(int64(x)) {
+			return fmt.Sprintf("%d", int64(x))
+		}
+		return fmt.Sprintf("%g", x)
+	default:
+		return quote(fmt.Sprintf("%v", x))
+	}
+}

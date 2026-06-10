@@ -1,0 +1,148 @@
+package dsl
+
+import (
+	"bytes"
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+const sample = `name = "Verify Individual"
+method = "POST"
+url = "{{baseUrl}}/aml/v2/verify"
+
+[headers]
+Content-Type = "application/json"
+X-Correlation-Id = "{{$uuid}}"
+
+[body]
+type = "json"
+content = '''
+{ "idNumber": "{{testIdNumber}}", "channel": "API" }
+'''
+
+[[assertions]]
+type = "status"
+equals = 200
+
+[[assertions]]
+type = "jsonpath"
+path = "$.result.status"
+equals = "VERIFIED"
+`
+
+func writeReq(t *testing.T, content string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "r.req.toml")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestLoadRequest(t *testing.T) {
+	r, err := LoadRequest(writeReq(t, sample))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Name != "Verify Individual" || r.Method != "POST" {
+		t.Errorf("got name=%q method=%q", r.Name, r.Method)
+	}
+	if r.Headers["Content-Type"] != "application/json" {
+		t.Errorf("headers = %v", r.Headers)
+	}
+	if r.Body == nil || r.Body.Type != "json" {
+		t.Fatalf("body = %+v", r.Body)
+	}
+	if len(r.Assertions) != 2 {
+		t.Fatalf("assertions = %+v", r.Assertions)
+	}
+	if r.Assertions[0].Type != "status" {
+		t.Errorf("first assertion = %+v", r.Assertions[0])
+	}
+	if got := r.Assertions[1].Equals; got != "VERIFIED" {
+		t.Errorf("jsonpath equals = %v", got)
+	}
+}
+
+// Marshal → Load → Marshal must be byte-identical (deterministic output is
+// what keeps collections git-diffable).
+func TestMarshalRoundTrip(t *testing.T) {
+	r, err := LoadRequest(writeReq(t, sample))
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := Marshal(r)
+	r2, err := LoadRequest(writeReq(t, string(first)))
+	if err != nil {
+		t.Fatalf("re-parse failed: %v\n%s", err, first)
+	}
+	second := Marshal(r2)
+	if !bytes.Equal(first, second) {
+		t.Errorf("round trip not stable:\n--- first ---\n%s\n--- second ---\n%s", first, second)
+	}
+}
+
+func TestMarshalEscaping(t *testing.T) {
+	r := &Request{
+		Name:    `has "quotes" and \backslash`,
+		Method:  "POST",
+		URL:     "https://example.com",
+		Headers: map[string]string{"X-Weird Key": "tab\there"},
+		Body:    &Body{Type: "raw", Content: "contains ''' triple quotes\nand newline"},
+	}
+	out := Marshal(r)
+	r2, err := LoadRequest(writeReq(t, string(out)))
+	if err != nil {
+		t.Fatalf("escaped output failed to parse: %v\n%s", err, out)
+	}
+	if r2.Name != r.Name {
+		t.Errorf("name: got %q want %q", r2.Name, r.Name)
+	}
+	if r2.Headers["X-Weird Key"] != "tab\there" {
+		t.Errorf("header: got %q", r2.Headers["X-Weird Key"])
+	}
+	if r2.Body.Content != r.Body.Content {
+		t.Errorf("body: got %q want %q", r2.Body.Content, r.Body.Content)
+	}
+}
+
+// Body content must survive Marshal → Load byte-exactly: no trailing
+// newline may be added or removed.
+func TestMarshalBodyFidelity(t *testing.T) {
+	for _, content := range []string{
+		`{"no": "trailing newline"}`,
+		"{\"with\": \"trailing newline\"}\n",
+		"line1\nline2",
+		"ends with quote'",
+		"tab\tis fine",
+	} {
+		r := &Request{Method: "POST", URL: "https://x.test", Body: &Body{Type: "json", Content: content}}
+		r2, err := LoadRequest(writeReq(t, string(Marshal(r))))
+		if err != nil {
+			t.Fatalf("%q: %v", content, err)
+		}
+		if r2.Body.Content != content {
+			t.Errorf("body changed:\n got %q\nwant %q", r2.Body.Content, content)
+		}
+	}
+}
+
+func TestLoadRequestErrors(t *testing.T) {
+	if _, err := LoadRequest(writeReq(t, `name = "no url"`)); err == nil {
+		t.Error("expected error for missing url")
+	}
+	if _, err := LoadRequest(writeReq(t, `url = "x" method`)); err == nil {
+		t.Error("expected error for invalid toml")
+	}
+}
+
+func TestDefaultMethod(t *testing.T) {
+	r, err := LoadRequest(writeReq(t, `url = "https://example.com"`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Method != "GET" {
+		t.Errorf("default method = %q", r.Method)
+	}
+}
