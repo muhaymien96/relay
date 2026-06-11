@@ -4,18 +4,22 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/muhaymien96/relay/internal/dsl"
 	"github.com/muhaymien96/relay/internal/engine"
 	"github.com/muhaymien96/relay/internal/porter"
 	"github.com/muhaymien96/relay/internal/runner"
+	"github.com/muhaymien96/relay/internal/ui"
 	"github.com/muhaymien96/relay/internal/vars"
 )
 
@@ -26,9 +30,13 @@ const usage = `relay — lightweight, local-first API client
 Usage:
   relay send <file.req.toml> [--env NAME] [-v] [--insecure] [--timeout 30s]
   relay run  <dir>           [--env NAME] [--report junit|json] [--out FILE]
-                             [--delay 0ms] [--bail] [--insecure] [--timeout 30s]
+                             [--data rows.csv|rows.json] [--delay 0ms] [--bail]
+                             [--insecure] [--timeout 30s]
   relay import postman <collection.json> [--out DIR]
   relay export curl <file.req.toml> [--env NAME]
+  relay export k6 <dir> [--env NAME] [--out script.js]
+  relay export playwright <dir> [--env NAME] [--out api.spec.ts]
+  relay ui [dir] [--port 7717]
   relay version
 
 Environments are TOML files at environments/<NAME>.toml, found by walking up
@@ -51,6 +59,8 @@ func main() {
 		err = cmdImport(os.Args[2:])
 	case "export":
 		err = cmdExport(os.Args[2:])
+	case "ui":
+		err = cmdUI(os.Args[2:])
 	case "version", "--version":
 		fmt.Println("relay", version)
 	case "help", "-h", "--help":
@@ -192,6 +202,7 @@ func cmdRun(args []string) error {
 	out := fs.String("out", "", "report output file (default stdout)")
 	delay := fs.Duration("delay", 0, "delay between requests")
 	bail := fs.Bool("bail", false, "stop at first failure")
+	dataFile := fs.String("data", "", "CSV or JSON file of variable rows for data-driven runs")
 	opts := engineFlags(fs)
 	pos, err := parseInterleaved(fs, args)
 	if err != nil {
@@ -206,12 +217,17 @@ func cmdRun(args []string) error {
 	if err != nil {
 		return err
 	}
+	data, err := loadData(*dataFile)
+	if err != nil {
+		return err
+	}
 
 	rep, err := runner.Run(context.Background(), root, runner.Options{
 		Env:    env,
 		Getenv: os.Getenv,
 		Delay:  *delay,
 		Bail:   *bail,
+		Data:   data,
 		Engine: opts(),
 		OnDone: func(rr runner.RequestResult) {
 			mark := "PASS"
@@ -301,24 +317,125 @@ func cmdImport(args []string) error {
 }
 
 func cmdExport(args []string) error {
-	if len(args) < 1 || args[0] != "curl" {
-		return fmt.Errorf("usage: relay export curl <file.req.toml> [--env NAME]")
+	if len(args) < 1 {
+		return fmt.Errorf("usage: relay export curl|k6|playwright <target>")
 	}
-	fs := flag.NewFlagSet("export curl", flag.ExitOnError)
+	target := args[0]
+	fs := flag.NewFlagSet("export "+target, flag.ExitOnError)
 	envName := fs.String("env", "", "environment name")
+	out := fs.String("out", "", "output file (default stdout)")
 	pos, err := parseInterleaved(fs, args[1:])
 	if err != nil {
 		return err
 	}
 	if len(pos) != 1 {
-		return fmt.Errorf("usage: relay export curl <file.req.toml>")
+		return fmt.Errorf("usage: relay export %s <target>", target)
 	}
-	_, resolved, err := resolveFile(pos[0], *envName)
+
+	var script string
+	switch target {
+	case "curl":
+		_, resolved, err := resolveFile(pos[0], *envName)
+		if err != nil {
+			return err
+		}
+		script = porter.Curl(resolved) + "\n"
+	case "k6", "playwright":
+		env, err := loadEnv(*envName, pos[0])
+		if err != nil {
+			return err
+		}
+		if target == "k6" {
+			script, err = porter.K6(pos[0], env)
+		} else {
+			script, err = porter.Playwright(pos[0], env)
+		}
+		if err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("unknown export target %q (curl|k6|playwright)", target)
+	}
+
+	if *out != "" {
+		if err := os.WriteFile(*out, []byte(script), 0o644); err != nil {
+			return err
+		}
+		fmt.Printf("wrote %s\n", *out)
+		return nil
+	}
+	fmt.Print(script)
+	return nil
+}
+
+func cmdUI(args []string) error {
+	fs := flag.NewFlagSet("ui", flag.ExitOnError)
+	port := fs.Int("port", 7717, "port to bind on 127.0.0.1 (0 picks a free port)")
+	opts := engineFlags(fs)
+	pos, err := parseInterleaved(fs, args)
 	if err != nil {
 		return err
 	}
-	fmt.Println(porter.Curl(resolved))
-	return nil
+	root := "."
+	if len(pos) == 1 {
+		root = pos[0]
+	} else if len(pos) > 1 {
+		return fmt.Errorf("usage: relay ui [dir]")
+	}
+	abs, err := filepath.Abs(root)
+	if err != nil {
+		return err
+	}
+	srv := &ui.Server{Root: abs, Engine: opts()}
+	return srv.ListenAndServe(context.Background(), *port)
+}
+
+// loadData reads data-driven rows from a CSV (header row = variable names)
+// or a JSON array of objects.
+func loadData(path string) ([]map[string]string, error) {
+	if path == "" {
+		return nil, nil
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if strings.HasSuffix(path, ".json") {
+		dec := json.NewDecoder(bytes.NewReader(raw))
+		dec.UseNumber()
+		var rows []map[string]any
+		if err := dec.Decode(&rows); err != nil {
+			return nil, fmt.Errorf("%s: %w", path, err)
+		}
+		out := make([]map[string]string, 0, len(rows))
+		for _, r := range rows {
+			m := make(map[string]string, len(r))
+			for k, v := range r {
+				m[k] = fmt.Sprintf("%v", v)
+			}
+			out = append(out, m)
+		}
+		return out, nil
+	}
+	recs, err := csv.NewReader(bytes.NewReader(raw)).ReadAll()
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	if len(recs) < 2 {
+		return nil, fmt.Errorf("%s: need a header row and at least one data row", path)
+	}
+	header := recs[0]
+	out := make([]map[string]string, 0, len(recs)-1)
+	for _, rec := range recs[1:] {
+		m := make(map[string]string, len(header))
+		for i, h := range header {
+			if i < len(rec) {
+				m[strings.TrimSpace(h)] = rec[i]
+			}
+		}
+		out = append(out, m)
+	}
+	return out, nil
 }
 
 func prettyJSON(b []byte) []byte {

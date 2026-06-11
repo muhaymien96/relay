@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Relay</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #14161a; --panel: #1c1f26; --line: #2a2e38; --fg: #d8dce6;
+    --dim: #8a90a0; --accent: #4f9cf9; --ok: #3fb96f; --bad: #e5604c;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 13px/1.5 system-ui, sans-serif; height: 100vh; display: flex; }
+  #sidebar { width: 260px; min-width: 180px; background: var(--panel);
+             border-right: 1px solid var(--line); display: flex; flex-direction: column; }
+  #brand { padding: 12px 14px; font-weight: 700; letter-spacing: .04em;
+           border-bottom: 1px solid var(--line); }
+  #brand small { color: var(--dim); font-weight: 400; margin-left: 6px; }
+  #tree { flex: 1; overflow: auto; padding: 6px 0; }
+  .req { padding: 5px 14px; cursor: pointer; white-space: nowrap; overflow: hidden;
+         text-overflow: ellipsis; }
+  .req:hover { background: #232733; }
+  .req.active { background: #263042; color: #fff; }
+  .req .dir { color: var(--dim); font-size: 11px; display: block; }
+  #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  #toolbar { display: flex; gap: 8px; align-items: center; padding: 10px 14px;
+             border-bottom: 1px solid var(--line); background: var(--panel); }
+  #path { font-family: var(--mono); color: var(--dim); flex: 1; overflow: hidden;
+          text-overflow: ellipsis; white-space: nowrap; }
+  select, button { background: #262b36; color: var(--fg); border: 1px solid var(--line);
+                   border-radius: 6px; padding: 6px 12px; font-size: 13px; }
+  button { cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff;
+                   font-weight: 600; }
+  button:disabled { opacity: .5; cursor: default; }
+  #panes { flex: 1; display: flex; min-height: 0; }
+  #editorPane, #respPane { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  #editorPane { border-right: 1px solid var(--line); }
+  .paneHead { padding: 6px 14px; color: var(--dim); font-size: 11px;
+              text-transform: uppercase; letter-spacing: .08em;
+              border-bottom: 1px solid var(--line); display: flex; gap: 10px;
+              align-items: center; }
+  #editor { flex: 1; resize: none; border: 0; outline: 0; background: var(--bg);
+            color: var(--fg); font-family: var(--mono); font-size: 13px;
+            padding: 12px 14px; tab-size: 2; }
+  #respMeta { display: flex; gap: 14px; padding: 8px 14px; align-items: baseline;
+              border-bottom: 1px solid var(--line); font-family: var(--mono); }
+  #respStatus.ok { color: var(--ok); } #respStatus.bad { color: var(--bad); }
+  #respBody { flex: 1; overflow: auto; margin: 0; padding: 12px 14px;
+              font-family: var(--mono); font-size: 12.5px; white-space: pre-wrap;
+              word-break: break-word; }
+  #timing { padding: 8px 14px; border-top: 1px solid var(--line); color: var(--dim);
+            font-family: var(--mono); font-size: 12px; }
+  #timing b { color: var(--fg); font-weight: 600; }
+  .bar { display: inline-block; height: 8px; background: var(--accent);
+         border-radius: 2px; vertical-align: middle; }
+  #msg { color: var(--dim); margin-left: auto; }
+  #msg.err { color: var(--bad); }
+  .tabs button { border: 0; background: none; color: var(--dim); padding: 2px 6px; }
+  .tabs button.on { color: var(--fg); border-bottom: 2px solid var(--accent);
+                    border-radius: 0; }
+</style>
+</head>
+<body>
+  <div id="sidebar">
+    <div id="brand">RELAY<small>local-first</small></div>
+    <div id="tree"></div>
+  </div>
+  <div id="main">
+    <div id="toolbar">
+      <span id="path">select a request</span>
+      <select id="env"><option value="">(no environment)</option></select>
+      <button id="save">Save</button>
+      <button id="send" class="primary">Send ▸</button>
+      <span id="msg"></span>
+    </div>
+    <div id="panes">
+      <div id="editorPane">
+        <div class="paneHead">request (.req.toml)</div>
+        <textarea id="editor" spellcheck="false" placeholder="# pick a request from the tree"></textarea>
+      </div>
+      <div id="respPane">
+        <div class="paneHead">
+          response
+          <span class="tabs">
+            <button id="tabPretty" class="on">pretty</button>
+            <button id="tabRaw">raw</button>
+            <button id="tabHeaders">headers</button>
+          </span>
+        </div>
+        <div id="respMeta"><span id="respStatus">—</span><span id="respTime"></span><span id="respSize"></span></div>
+        <pre id="respBody"></pre>
+        <div id="timing"></div>
+      </div>
+    </div>
+  </div>
+<script>
+const $ = (id) => document.getElementById(id);
+let current = null, last = null, tab = 'pretty';
+
+async function api(url, opts) {
+  const r = await fetch(url, opts);
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || r.statusText);
+  return data;
+}
+function msg(text, err) {
+  $('msg').textContent = text;
+  $('msg').className = err ? 'err' : '';
+  if (!err && text) setTimeout(() => { if ($('msg').textContent === text) $('msg').textContent = ''; }, 2500);
+}
+
+async function loadWorkspace() {
+  const ws = await api('/api/workspace');
+  const tree = $('tree');
+  tree.innerHTML = '';
+  for (const req of ws.requests || []) {
+    const div = document.createElement('div');
+    div.className = 'req';
+    div.dataset.path = req.path;
+    const dir = req.path.includes('/') ? req.path.slice(0, req.path.lastIndexOf('/')) : '';
+    div.innerHTML = (dir ? `<span class="dir">${esc(dir)}/</span>` : '') + esc(req.name);
+    div.onclick = () => open(req.path);
+    tree.appendChild(div);
+  }
+  const envSel = $('env');
+  for (const e of ws.environments || []) {
+    const o = document.createElement('option');
+    o.value = e; o.textContent = e;
+    envSel.appendChild(o);
+  }
+}
+async function open(path) {
+  try {
+    const f = await api('/api/file?path=' + encodeURIComponent(path));
+    current = path;
+    $('editor').value = f.content;
+    $('path').textContent = path;
+    document.querySelectorAll('.req').forEach(el =>
+      el.classList.toggle('active', el.dataset.path === path));
+  } catch (e) { msg(e.message, true); }
+}
+async function save() {
+  if (!current) return;
+  try {
+    await api('/api/file', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: current, content: $('editor').value }) });
+    msg('saved');
+  } catch (e) { msg(e.message, true); }
+}
+async function send() {
+  if (!current) return;
+  $('send').disabled = true;
+  msg('sending…');
+  try {
+    await save();
+    last = await api('/api/send', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: current, env: $('env').value }) });
+    render();
+    msg('');
+  } catch (e) {
+    msg(e.message, true);
+    $('respStatus').textContent = '—'; $('respStatus').className = '';
+    $('respBody').textContent = e.message;
+  } finally { $('send').disabled = false; }
+}
+function render() {
+  if (!last) return;
+  const s = $('respStatus');
+  s.textContent = `${last.method} → ${last.statusText}`;
+  s.className = last.status >= 200 && last.status < 400 ? 'ok' : 'bad';
+  $('respTime').textContent = last.timing.total.toFixed(1) + ' ms';
+  $('respSize').textContent = fmtSize(last.size) + (last.truncated ? ' (truncated view)' : '');
+  let text;
+  if (tab === 'headers') {
+    text = Object.entries(last.headers).map(([k, v]) => `${k}: ${v}`).join('\n');
+  } else if (tab === 'pretty') {
+    try { text = JSON.stringify(JSON.parse(last.body), null, 2); }
+    catch { text = last.body; }
+  } else {
+    text = last.body;
+  }
+  $('respBody').textContent = text;
+  const t = last.timing, total = Math.max(t.total, 0.001);
+  $('timing').innerHTML = ['dns', 'connect', 'tls', 'ttfb', 'download']
+    .map(k => `${k} <b>${t[k].toFixed(1)}ms</b> <span class="bar" style="width:${Math.max(2, 60 * t[k] / total)}px"></span>`)
+    .join(' &nbsp; ');
+}
+function esc(s) { return s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function fmtSize(n) { return n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(1) + ' MB'; }
+
+$('save').onclick = save;
+$('send').onclick = send;
+for (const id of ['tabPretty', 'tabRaw', 'tabHeaders']) {
+  $(id).onclick = () => {
+    tab = id.slice(3).toLowerCase();
+    document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.id === id));
+    render();
+  };
+}
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); save(); }
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); send(); }
+});
+loadWorkspace().catch(e => msg(e.message, true));
+</script>
+</body>
+</html>

@@ -220,3 +220,51 @@ func TestRunTransportError(t *testing.T) {
 		t.Errorf("expected transport error, got %+v", rep.Results[0])
 	}
 }
+
+func TestDataDrivenRun(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"id": r.URL.Query().Get("id")})
+	}))
+	defer srv.Close()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "x.req.toml"), []byte(`name = "lookup"
+url = "{{baseUrl}}/item?id={{rowId}}"
+[[assertions]]
+type = "jsonpath"
+path = "$.id"
+equals = "{{rowId}}"
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	rep, err := Run(context.Background(), root, Options{
+		Env:    &dsl.Environment{Vars: map[string]string{"baseUrl": srv.URL}},
+		Getenv: os.Getenv,
+		Data: []map[string]string{
+			{"rowId": "100"},
+			{"rowId": "200"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Results) != 2 {
+		t.Fatalf("results = %d", len(rep.Results))
+	}
+	for i, want := range []string{"lookup [1]", "lookup [2]"} {
+		if rep.Results[i].Name != want {
+			t.Errorf("name[%d] = %q, want %q", i, rep.Results[i].Name, want)
+		}
+		if rep.Results[i].Iteration != i+1 {
+			t.Errorf("iteration[%d] = %d", i, rep.Results[i].Iteration)
+		}
+	}
+	if rep.Failures() != 0 {
+		for _, r := range rep.Results {
+			t.Logf("%+v", r)
+		}
+		t.Errorf("failures = %d", rep.Failures())
+	}
+}

@@ -8,9 +8,13 @@ Single static binary (~6MB), no Electron, no account, no cloud, no telemetry.
 
 ```
 relay send  <file.req.toml>  [--env NAME] [-v]
-relay run   <dir>            [--env NAME] [--report junit|json] [--out FILE] [--bail] [--delay 200ms]
+relay run   <dir>            [--env NAME] [--report junit|json] [--out FILE]
+                             [--data rows.csv|rows.json] [--bail] [--delay 200ms]
 relay import postman <collection.json> [--out DIR]
 relay export curl <file.req.toml> [--env NAME]
+relay export k6 <dir> [--env NAME] [--out script.js]
+relay export playwright <dir> [--env NAME] [--out api.spec.ts]
+relay ui    [dir]            [--port 7717]
 ```
 
 ## Install
@@ -127,16 +131,48 @@ X-Correlation-Id = "{{$uuid}}"
 | `contains` | `contains`              | substring in body               |
 | `max_ms`   | `max_ms`                | total request duration          |
 
+## Data-driven runs
+
+```sh
+relay run my-collection --env sit --data ids.csv
+```
+
+The collection executes once per row; row values are the
+highest-precedence variables and may appear in assertion expectations too
+(`equals = "{{testIdNumber}}"`). CSV needs a header row; JSON is an array
+of objects.
+
 ## Import & export
 
 ```sh
 relay import postman collection.json --out my-collection   # Postman v2.x
 relay export curl my-collection/02-verify.req.toml --env sit
+relay export k6 my-collection --env sit --out load.js
+relay export playwright my-collection --env sit --out api.spec.ts
 ```
 
 Postman import maps folders to directories, requests to `.req.toml` files
 (deterministic output — clean diffs), collection variables to
 `collection.toml`, and bearer/basic/apikey auth.
+
+The k6/Playwright exporters resolve plain variables inline but keep two
+things dynamic in the generated script: secrets become `__ENV.RELAY_SECRET_*`
+/ `process.env.RELAY_SECRET_*` references (no secret value ever lands in a
+script), and computed variables become live expressions so every load-test
+iteration gets a fresh `{{$uuid}}`. Folders map to k6 `group()`s and
+Playwright `describe` blocks; assertions map to `check`s and `expect`s.
+
+## Local UI
+
+```sh
+relay ui my-collection        # http://127.0.0.1:7717
+```
+
+The same binary serves an embedded request builder: collection tree,
+TOML editor with save validation, environment picker, response viewer
+with pretty/raw/headers tabs and the timing waterfall. Localhost-only;
+file access is confined to the workspace directory; secret-bearing header
+values are masked before they reach the browser.
 
 ## Project docs
 
@@ -144,6 +180,6 @@ Postman import maps folders to directories, requests to `.req.toml` files
 - [Implementation Plan](docs/IMPLEMENTATION_PLAN.md)
 - Example workspace: [`examples/aml-demo`](examples/aml-demo)
 
-The desktop app (Wails), k6/Playwright export, OpenAPI, scripting, and the
-Xray adapter are tracked in the implementation plan; the CLI and engine here
-are the foundation they share.
+The native desktop shell (Wails), OpenAPI import/export, scripting (goja
+pm-shim), and the Xray adapter are tracked in the implementation plan; the
+engine, CLI, exporters, and embedded UI here are the foundation they share.
