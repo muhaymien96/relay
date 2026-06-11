@@ -162,10 +162,10 @@ script), and computed variables become live expressions so every load-test
 iteration gets a fresh `{{$uuid}}`. Folders map to k6 `group()`s and
 Playwright `describe` blocks; assertions map to `check`s and `expect`s.
 
-## Local UI
+## UI: browser or native desktop
 
 ```sh
-relay ui my-collection        # http://127.0.0.1:7717
+relay ui my-collection        # browser UI at http://127.0.0.1:7717
 ```
 
 The same binary serves an embedded request builder: collection tree,
@@ -174,12 +174,25 @@ with pretty/raw/headers tabs and the timing waterfall. Localhost-only;
 file access is confined to the workspace directory; secret-bearing header
 values are masked before they reach the browser.
 
+The native desktop app (`relay-app`) wraps the identical UI in a system
+webview via Wails v2 — WebView2 on Windows, WKWebView on macOS, WebKitGTK
+on Linux. No Electron, no bundled browser, ~10MB binary.
+
+```sh
+# Linux: needs libgtk-3-dev libwebkit2gtk-4.1-dev to build
+go build -tags desktop,production,webkit2_41 -o relay-app ./cmd/relay-app
+# macOS / Windows
+go build -tags desktop,production -o relay-app ./cmd/relay-app
+
+relay-app --workspace my-collection   # or RELAY_WORKSPACE=... relay-app
+```
+
 ## Project docs
 
 - [Product Requirements (PRD)](docs/PRD.md)
 - [Implementation Plan](docs/IMPLEMENTATION_PLAN.md)
 - Example workspace: [`examples/aml-demo`](examples/aml-demo)
 
-The native desktop shell (Wails), OpenAPI import/export, scripting (goja
-pm-shim), and the Xray adapter are tracked in the implementation plan; the
-engine, CLI, exporters, and embedded UI here are the foundation they share.
+OpenAPI import/export, scripting (goja pm-shim), and the Xray adapter are
+tracked in the implementation plan; the engine, CLI, exporters, and shared
+UI here are the foundation they build on.
