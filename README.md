@@ -162,17 +162,26 @@ script), and computed variables become live expressions so every load-test
 iteration gets a fresh `{{$uuid}}`. Folders map to k6 `group()`s and
 Playwright `describe` blocks; assertions map to `check`s and `expect`s.
 
-## UI: browser or native desktop
+## Workbench UI: browser or native desktop
 
 ```sh
 relay ui my-collection        # browser UI at http://127.0.0.1:7717
 ```
 
-The same binary serves an embedded request builder: collection tree,
-TOML editor with save validation, environment picker, response viewer
-with pretty/raw/headers tabs and the timing waterfall. Localhost-only;
-file access is confined to the workspace directory; secret-bearing header
-values are masked before they reach the browser.
+The same binary serves the full Relay workbench, backed by a local SQLite
+database (`relay.db`): collections / folders / requests with structured
+editors (params, auth, headers with inheritance origins, body, assertions,
+vars), reusable **header presets** attachable to collections and folders
+(secret-flagged values are stored locally, masked in the UI, and excluded
+from exports), environments with `RELAY_SECRET_*` secrets, an in-app
+**collection runner** with pass/fail summary cards and P95 latency, send
+**history** with stored responses, per-request performance metrics, and
+Postman import / k6 / Playwright export — all local-first, localhost-only.
+
+On first launch in a directory of `.req.toml` files the database is seeded
+from them automatically; `/api/export` (and the CLI porters) write the same
+file format back out, so git and CI keep working on plain files while the
+app works on SQLite.
 
 The native desktop app (`relay-app`) wraps the identical UI in a system
 webview via Wails v2 — WebView2 on Windows, WKWebView on macOS, WebKitGTK

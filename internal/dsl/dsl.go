@@ -13,46 +13,46 @@ import (
 
 // Request is one .req.toml file.
 type Request struct {
-	Name       string            `toml:"name"`
-	Method     string            `toml:"method"`
-	URL        string            `toml:"url"`
-	Query      map[string]string `toml:"query"`
-	Headers    map[string]string `toml:"headers"`
-	Vars       map[string]string `toml:"vars"`
-	Auth       *Auth             `toml:"auth"`
-	Body       *Body             `toml:"body"`
-	Assertions []Assertion       `toml:"assertions"`
+	Name       string            `toml:"name" json:"name"`
+	Method     string            `toml:"method" json:"method"`
+	URL        string            `toml:"url" json:"url"`
+	Query      map[string]string `toml:"query" json:"query,omitempty"`
+	Headers    map[string]string `toml:"headers" json:"headers,omitempty"`
+	Vars       map[string]string `toml:"vars" json:"vars,omitempty"`
+	Auth       *Auth             `toml:"auth" json:"auth,omitempty"`
+	Body       *Body             `toml:"body" json:"body,omitempty"`
+	Assertions []Assertion       `toml:"assertions" json:"assertions,omitempty"`
 
 	// Path is where the request was loaded from (not serialized).
-	Path string `toml:"-"`
+	Path string `toml:"-" json:"-"`
 }
 
 // Auth holds the request auth helper config.
 type Auth struct {
-	Type     string `toml:"type"` // bearer | basic | apikey
-	Token    string `toml:"token"`
-	Username string `toml:"username"`
-	Password string `toml:"password"`
-	Key      string `toml:"key"`   // apikey header/query name
-	Value    string `toml:"value"` // apikey value
-	In       string `toml:"in"`    // header (default) | query
+	Type     string `toml:"type" json:"type"` // bearer | basic | apikey
+	Token    string `toml:"token" json:"token,omitempty"`
+	Username string `toml:"username" json:"username,omitempty"`
+	Password string `toml:"password" json:"password,omitempty"`
+	Key      string `toml:"key" json:"key,omitempty"`     // apikey header/query name
+	Value    string `toml:"value" json:"value,omitempty"` // apikey value
+	In       string `toml:"in" json:"in,omitempty"`       // header (default) | query
 }
 
 // Body holds the request body. Content and File are mutually exclusive.
 type Body struct {
-	Type    string `toml:"type"` // json | xml | raw | urlencoded | binary
-	Content string `toml:"content"`
-	File    string `toml:"file"`
+	Type    string `toml:"type" json:"type"` // json | xml | raw | urlencoded | binary
+	Content string `toml:"content" json:"content,omitempty"`
+	File    string `toml:"file" json:"file,omitempty"`
 }
 
 // Assertion is one post-response check.
 type Assertion struct {
-	Type     string `toml:"type"` // status | jsonpath | header | contains | max_ms
-	Path     string `toml:"path"`
-	Name     string `toml:"name"`
-	Equals   any    `toml:"equals"`
-	Contains string `toml:"contains"`
-	MaxMs    int64  `toml:"max_ms"`
+	Type     string `toml:"type" json:"type"` // status | jsonpath | header | contains | max_ms
+	Path     string `toml:"path" json:"path,omitempty"`
+	Name     string `toml:"name" json:"name,omitempty"`
+	Equals   any    `toml:"equals" json:"equals,omitempty"`
+	Contains string `toml:"contains" json:"contains,omitempty"`
+	MaxMs    int64  `toml:"max_ms" json:"max_ms,omitempty"`
 }
 
 // Config is a collection.toml or folder.toml: headers and vars that

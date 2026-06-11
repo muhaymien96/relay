@@ -165,7 +165,7 @@ func runOne(ctx context.Context, root, file string, row map[string]string, opts 
 		return rr
 	}
 	rr.Status = result.Status
-	resolvedAsserts, err := resolveAssertions(req.Assertions, scope)
+	resolvedAsserts, err := ResolveAssertions(req.Assertions, scope)
 	if err != nil {
 		rr.Err = err
 		return rr
@@ -174,9 +174,10 @@ func runOne(ctx context.Context, root, file string, row map[string]string, opts 
 	return rr
 }
 
-// resolveAssertions interpolates {{variables}} in assertion fields so
-// data-driven rows can drive expected values, not just inputs.
-func resolveAssertions(in []dsl.Assertion, scope *vars.Scope) ([]dsl.Assertion, error) {
+// ResolveAssertions interpolates {{variables}} in assertion fields so
+// data-driven rows (and the UI runner) can drive expected values, not just
+// inputs.
+func ResolveAssertions(in []dsl.Assertion, scope *vars.Scope) ([]dsl.Assertion, error) {
 	out := make([]dsl.Assertion, len(in))
 	for i, a := range in {
 		var err error

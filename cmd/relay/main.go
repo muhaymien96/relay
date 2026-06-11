@@ -19,6 +19,7 @@ import (
 	"github.com/muhaymien96/relay/internal/engine"
 	"github.com/muhaymien96/relay/internal/porter"
 	"github.com/muhaymien96/relay/internal/runner"
+	"github.com/muhaymien96/relay/internal/store"
 	"github.com/muhaymien96/relay/internal/ui"
 	"github.com/muhaymien96/relay/internal/vars"
 )
@@ -36,7 +37,7 @@ Usage:
   relay export curl <file.req.toml> [--env NAME]
   relay export k6 <dir> [--env NAME] [--out script.js]
   relay export playwright <dir> [--env NAME] [--out api.spec.ts]
-  relay ui [dir] [--port 7717]
+  relay ui [dir] [--db relay.db] [--port 7717]
   relay version
 
 Environments are TOML files at environments/<NAME>.toml, found by walking up
@@ -371,6 +372,7 @@ func cmdExport(args []string) error {
 func cmdUI(args []string) error {
 	fs := flag.NewFlagSet("ui", flag.ExitOnError)
 	port := fs.Int("port", 7717, "port to bind on 127.0.0.1 (0 picks a free port)")
+	dbPath := fs.String("db", "", "SQLite workspace database (default <dir>/relay.db)")
 	opts := engineFlags(fs)
 	pos, err := parseInterleaved(fs, args)
 	if err != nil {
@@ -382,12 +384,63 @@ func cmdUI(args []string) error {
 	} else if len(pos) > 1 {
 		return fmt.Errorf("usage: relay ui [dir]")
 	}
-	abs, err := filepath.Abs(root)
+	db, err := openWorkspaceDB(root, *dbPath)
 	if err != nil {
 		return err
 	}
-	srv := &ui.Server{Root: abs, Engine: opts()}
+	defer db.Close()
+	srv := &ui.Server{DB: db, Engine: opts()}
 	return srv.ListenAndServe(context.Background(), *port)
+}
+
+// openWorkspaceDB opens the workspace database (default <dir>/relay.db) and,
+// when the database is brand new and the directory holds .req.toml files,
+// seeds it from them so existing file-based workspaces open seamlessly.
+func openWorkspaceDB(dir, dbPath string) (*store.Store, error) {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return nil, err
+	}
+	if dbPath == "" {
+		dbPath = filepath.Join(abs, "relay.db")
+	}
+	db, err := store.Open(dbPath)
+	if err != nil {
+		return nil, err
+	}
+	empty, err := db.Empty()
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+	if empty {
+		if matches, _ := filepath.Glob(filepath.Join(abs, "*.req.toml")); len(matches) > 0 || hasNestedRequests(abs) {
+			if _, err := db.SeedFromDir(abs); err != nil {
+				db.Close()
+				return nil, fmt.Errorf("seeding from %s: %w", abs, err)
+			}
+			fmt.Printf("relay: seeded workspace database from %s\n", abs)
+		}
+	}
+	return db, nil
+}
+
+func hasNestedRequests(dir string) bool {
+	found := false
+	_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() && (strings.HasPrefix(d.Name(), ".") && path != dir) {
+			return filepath.SkipDir
+		}
+		if strings.HasSuffix(path, ".req.toml") {
+			found = true
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	return found
 }
 
 // loadData reads data-driven rows from a CSV (header row = variable names)

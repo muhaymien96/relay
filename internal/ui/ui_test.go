@@ -4,155 +4,277 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/muhaymien96/relay/internal/dsl"
 	"github.com/muhaymien96/relay/internal/engine"
+	"github.com/muhaymien96/relay/internal/store"
 )
 
-func newServer(t *testing.T) (*Server, *httptest.Server) {
+// newServer seeds a store with one collection (folder + preset + secret)
+// pointed at a live echo API.
+func newServer(t *testing.T) (*Server, int64) {
 	t.Helper()
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{
-			"auth": r.Header.Get("Authorization"),
+			"auth":    r.Header.Get("Authorization"),
+			"channel": r.Header.Get("X-Channel"),
+			"team":    r.Header.Get("X-Team"),
 		})
 	}))
 	t.Cleanup(api.Close)
 
-	root := t.TempDir()
-	write := func(rel, content string) {
-		t.Helper()
-		p := filepath.Join(root, rel)
-		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
-			t.Fatal(err)
-		}
+	db, err := store.Open(filepath.Join(t.TempDir(), "relay.db"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	write("01-echo.req.toml", `name = "Echo"
-url = "{{baseUrl}}/echo"
-[auth]
-type = "bearer"
-token = "{{apiToken}}"
-`)
-	write("environments/local.toml", "secrets = [\"apiToken\"]\n\n[vars]\nbaseUrl = \""+api.URL+"\"\n")
+	t.Cleanup(func() { db.Close() })
+
+	col := &store.Collection{Name: "AML", Headers: map[string]string{"X-Team": "qe"},
+		Vars: map[string]string{"baseUrl": api.URL}}
+	if err := db.CreateCollection(col); err != nil {
+		t.Fatal(err)
+	}
+	req := &store.Request{CollectionID: col.ID, Spec: &dsl.Request{
+		Name: "Echo", Method: "GET", URL: "{{baseUrl}}/echo",
+		Auth: &dsl.Auth{Type: "bearer", Token: "{{apiToken}}"},
+		Assertions: []dsl.Assertion{
+			{Type: "status", Equals: float64(200)}, // JSON round-trip makes numbers float64
+			{Type: "jsonpath", Path: "$.team", Equals: "qe"},
+		},
+	}}
+	if err := db.CreateRequest(req); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.UpsertEnvironment(&store.Environment{Name: "local",
+		Vars: map[string]string{}, Secrets: []string{"apiToken"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.CreatePreset(&store.Preset{Name: "gw",
+		Headers:     []store.PresetHeader{{Key: "X-Channel", Value: "MOBILE_IOS"}, {Key: "X-Gw-Key", Value: "topsecret", Secret: true}},
+		Attachments: []store.Attachment{{CollectionID: &col.ID}}}); err != nil {
+		t.Fatal(err)
+	}
 
 	return &Server{
-		Root:   root,
-		Engine: engine.NewOptions(),
+		DB: db, Engine: engine.NewOptions(),
 		Getenv: func(k string) string {
 			if k == "RELAY_SECRET_APITOKEN" {
 				return "hunter2"
 			}
 			return ""
 		},
-	}, api
+	}, req.ID
 }
 
-func get(t *testing.T, h http.Handler, url string) (*httptest.ResponseRecorder, map[string]any) {
+func call(t *testing.T, s *Server, method, url, body string) (*httptest.ResponseRecorder, map[string]any) {
 	t.Helper()
-	return do(t, h, httptest.NewRequest("GET", url, nil))
-}
-
-func post(t *testing.T, h http.Handler, url, body string) (*httptest.ResponseRecorder, map[string]any) {
-	t.Helper()
-	req := httptest.NewRequest("POST", url, strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	return do(t, h, req)
-}
-
-func do(t *testing.T, h http.Handler, req *http.Request) (*httptest.ResponseRecorder, map[string]any) {
-	t.Helper()
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-	var doc map[string]any
-	if err := json.Unmarshal(rec.Body.Bytes(), &doc); err != nil {
-		t.Fatalf("non-JSON response (%d): %s", rec.Code, rec.Body.String())
+	var rd *strings.Reader
+	if body == "" {
+		rd = strings.NewReader("")
+	} else {
+		rd = strings.NewReader(body)
 	}
+	req := httptest.NewRequest(method, url, rd)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	var doc map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &doc)
 	return rec, doc
 }
 
-func TestWorkspaceListing(t *testing.T) {
+func TestState(t *testing.T) {
 	s, _ := newServer(t)
-	rec, doc := get(t, s.Handler(), "/api/workspace")
+	rec, doc := call(t, s, "GET", "/api/state", "")
 	if rec.Code != 200 {
 		t.Fatalf("status %d", rec.Code)
 	}
-	reqs := doc["requests"].([]any)
-	if len(reqs) != 1 || reqs[0].(map[string]any)["name"] != "Echo" {
-		t.Errorf("requests = %v", reqs)
+	cols := doc["collections"].([]any)
+	if len(cols) != 1 {
+		t.Fatalf("collections = %d", len(cols))
 	}
-	envs := doc["environments"].([]any)
-	if len(envs) != 1 || envs[0] != "local" {
-		t.Errorf("environments = %v", envs)
+	col := cols[0].(map[string]any)
+	if col["name"] != "AML" || len(col["requests"].([]any)) != 1 {
+		t.Errorf("col = %v", col)
+	}
+	// Secret preset values must not appear in state.
+	if strings.Contains(rec.Body.String(), "topsecret") {
+		t.Error("secret preset value leaked in /api/state")
+	}
+	presets := doc["presets"].([]any)
+	if len(presets) != 1 {
+		t.Errorf("presets = %v", presets)
 	}
 }
 
-func TestPathTraversalBlocked(t *testing.T) {
+func TestRequestCRUDOverHTTP(t *testing.T) {
 	s, _ := newServer(t)
-	for _, p := range []string{"../../etc/passwd.toml", "/etc/passwd", "x.req.json"} {
-		rec, _ := get(t, s.Handler(), "/api/file?path="+p)
-		if rec.Code != 400 && rec.Code != 404 {
-			t.Errorf("%s: status %d, want 400/404", p, rec.Code)
+	rec, doc := call(t, s, "POST", "/api/requests",
+		`{"collectionId":1,"spec":{"name":"New","method":"POST","url":"{{baseUrl}}/x"}}`)
+	if rec.Code != 200 {
+		t.Fatalf("create: %d %v", rec.Code, doc)
+	}
+	id := int64(doc["id"].(float64))
+
+	rec, doc = call(t, s, "PUT", "/api/requests/"+itoa(id),
+		`{"spec":{"name":"Renamed","method":"PUT","url":"{{baseUrl}}/y"}}`)
+	if rec.Code != 200 {
+		t.Fatalf("update: %d %v", rec.Code, doc)
+	}
+	rec, doc = call(t, s, "GET", "/api/requests/"+itoa(id), "")
+	spec := doc["spec"].(map[string]any)
+	if spec["name"] != "Renamed" || spec["method"] != "PUT" {
+		t.Errorf("spec = %v", spec)
+	}
+	rec, _ = call(t, s, "DELETE", "/api/requests/"+itoa(id), "")
+	if rec.Code != 200 {
+		t.Errorf("delete: %d", rec.Code)
+	}
+	rec, _ = call(t, s, "GET", "/api/requests/"+itoa(id), "")
+	if rec.Code != 404 {
+		t.Errorf("get deleted: %d", rec.Code)
+	}
+}
+
+func TestSendWithPresetsAndSecrets(t *testing.T) {
+	s, reqID := newServer(t)
+	rec, doc := call(t, s, "POST", "/api/send", `{"requestId":`+itoa(reqID)+`,"env":"local"}`)
+	if rec.Code != 200 {
+		t.Fatalf("send: %d %v", rec.Code, doc)
+	}
+	body := doc["body"].(string)
+	// Upstream got the real bearer token and the preset header.
+	if !strings.Contains(body, "Bearer hunter2") || !strings.Contains(body, "MOBILE_IOS") {
+		t.Errorf("upstream body = %s", body)
+	}
+	// Display headers are masked: env secret and secret preset value.
+	rh := doc["requestHeaders"].(map[string]any)
+	if strings.Contains(rh["Authorization"].(string), "hunter2") {
+		t.Errorf("env secret leaked: %v", rh["Authorization"])
+	}
+	if got := rh["X-Gw-Key"].(string); strings.Contains(got, "topsecret") {
+		t.Errorf("preset secret leaked: %v", got)
+	}
+	// Collection header inherited.
+	if rh["X-Team"].(string) != "qe" {
+		t.Errorf("inherited header missing: %v", rh)
+	}
+	// Assertions evaluated.
+	asserts := doc["assertions"].([]any)
+	if len(asserts) != 2 {
+		t.Fatalf("assertions = %v", asserts)
+	}
+	for _, a := range asserts {
+		if !a.(map[string]any)["passed"].(bool) {
+			t.Errorf("assertion failed: %v", a)
 		}
 	}
-	// Direct escape via save too.
-	rec, _ := post(t, s.Handler(), "/api/file", `{"path":"../evil.toml","content":"x"}`)
-	if rec.Code != 400 {
-		t.Errorf("save escape: status %d", rec.Code)
+
+	// History recorded; stored body retrievable; list carries no body.
+	_, list := call(t, s, "GET", "/api/history", "")
+	_ = list
+	rec, _ = call(t, s, "GET", "/api/history", "")
+	var entries []map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &entries)
+	if len(entries) != 1 {
+		t.Fatalf("history = %v", entries)
+	}
+	id := int64(entries[0]["id"].(float64))
+	rec, doc = call(t, s, "GET", "/api/history/"+itoa(id), "")
+	if rec.Code != 200 || !strings.Contains(doc["body"].(string), "MOBILE_IOS") {
+		t.Errorf("history entry: %d %v", rec.Code, doc)
+	}
+
+	// Stats reflect the send.
+	rec, doc = call(t, s, "GET", "/api/requests/"+itoa(reqID)+"/stats", "")
+	if rec.Code != 200 || doc["count"].(float64) != 1 || doc["successRate"].(float64) != 1 {
+		t.Errorf("stats: %d %v", rec.Code, doc)
 	}
 }
 
-func TestSaveValidatesRequests(t *testing.T) {
+func TestRunCollection(t *testing.T) {
 	s, _ := newServer(t)
-	rec, _ := post(t, s.Handler(), "/api/file", `{"path":"01-echo.req.toml","content":"not [valid toml"}`)
-	if rec.Code != 422 {
-		t.Errorf("invalid content: status %d, want 422", rec.Code)
-	}
-	rec, _ = post(t, s.Handler(), "/api/file", `{"path":"01-echo.req.toml","content":"name = \"Echo2\"\nurl = \"http://x.test\"\n"}`)
+	rec, doc := call(t, s, "POST", "/api/run", `{"collectionId":1,"env":"local"}`)
 	if rec.Code != 200 {
-		t.Errorf("valid save: status %d", rec.Code)
+		t.Fatalf("run: %d %v", rec.Code, doc)
 	}
-	data, _ := os.ReadFile(filepath.Join(s.Root, "01-echo.req.toml"))
-	if !strings.Contains(string(data), "Echo2") {
-		t.Error("save did not persist")
+	if doc["executed"].(float64) != 1 || doc["passed"].(float64) != 1 || doc["failed"].(float64) != 0 {
+		t.Errorf("summary = %v", doc)
 	}
 }
 
-func TestSendMasksSecrets(t *testing.T) {
-	s, api := newServer(t)
-	rec, doc := post(t, s.Handler(), "/api/send", `{"path":"01-echo.req.toml","env":"local"}`)
+func TestImportPostmanAndExportK6(t *testing.T) {
+	s, _ := newServer(t)
+	postman := `{"info":{"name":"Imported"},"item":[{"name":"Ping","request":{"method":"GET","url":"https://x.test/ping"}}]}`
+	rec, doc := call(t, s, "POST", "/api/import/postman", postman)
+	if rec.Code != 200 || doc["requests"].(float64) != 1 {
+		t.Fatalf("import: %d %v", rec.Code, doc)
+	}
+	colID := int64(doc["collectionId"].(float64))
+
+	req := httptest.NewRequest("GET", "/api/export?format=k6&collection="+itoa(colID), nil)
+	out := httptest.NewRecorder()
+	s.Handler().ServeHTTP(out, req)
+	if out.Code != 200 {
+		t.Fatalf("export: %d %s", out.Code, out.Body.String())
+	}
+	script := out.Body.String()
+	if !strings.Contains(script, "k6/http") || !strings.Contains(script, "https://x.test/ping") {
+		t.Errorf("k6 script missing content:\n%s", script)
+	}
+}
+
+func TestEnvironmentAndPresetEndpoints(t *testing.T) {
+	s, _ := newServer(t)
+	rec, _ := call(t, s, "PUT", "/api/environments/sit", `{"vars":{"baseUrl":"https://sit"},"secrets":["k"]}`)
 	if rec.Code != 200 {
-		t.Fatalf("status %d: %v", rec.Code, doc)
+		t.Fatalf("env put: %d", rec.Code)
 	}
-	if doc["status"].(float64) != 200 {
-		t.Errorf("upstream status = %v", doc["status"])
+	rec, _ = call(t, s, "GET", "/api/environments", "")
+	if !strings.Contains(rec.Body.String(), `"sit"`) {
+		t.Error("env list missing sit")
 	}
-	// The server actually received the real token...
-	if !strings.Contains(doc["body"].(string), "Bearer hunter2") {
-		t.Errorf("upstream did not get the token: %v", doc["body"])
+	rec, _ = call(t, s, "DELETE", "/api/environments/sit", "")
+	if rec.Code != 200 {
+		t.Errorf("env delete: %d", rec.Code)
 	}
-	// ...but the request headers shown to the UI are masked.
-	rh := doc["requestHeaders"].(map[string]any)
-	auth := rh["Authorization"].(string)
-	if strings.Contains(auth, "hunter2") || !strings.Contains(auth, "••••••") {
-		t.Errorf("Authorization shown to UI = %q", auth)
+
+	rec, doc := call(t, s, "POST", "/api/presets", `{"name":"json-defaults","headers":[{"key":"Accept","value":"application/json"}]}`)
+	if rec.Code != 200 {
+		t.Fatalf("preset create: %d %v", rec.Code, doc)
 	}
-	if doc["timing"].(map[string]any)["total"].(float64) <= 0 {
-		t.Error("timing missing")
+	id := int64(doc["id"].(float64))
+	// Updating a secret header with empty value keeps the stored value.
+	rec, _ = call(t, s, "PUT", "/api/presets/1",
+		`{"name":"gw","headers":[{"key":"X-Gw-Key","value":"","secret":true}],"attachments":[{"collectionId":1}]}`)
+	if rec.Code != 200 {
+		t.Fatalf("preset update: %d", rec.Code)
 	}
-	_ = api
+	ps, _ := s.DB.Presets()
+	for _, p := range ps {
+		if p.Name == "gw" && p.Headers[0].Value != "topsecret" {
+			t.Errorf("secret wiped on masked round-trip: %+v", p.Headers)
+		}
+	}
+	rec, _ = call(t, s, "DELETE", "/api/presets/"+itoa(id), "")
+	if rec.Code != 200 {
+		t.Errorf("preset delete: %d", rec.Code)
+	}
 }
 
 func TestIndexServed(t *testing.T) {
 	s, _ := newServer(t)
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
-	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "RELAY") {
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "API Workbench") {
 		t.Errorf("index: %d", rec.Code)
 	}
+}
+
+func itoa(i int64) string {
+	b, _ := json.Marshal(i)
+	return string(b)
 }

@@ -3,3 +3,6 @@
 report.xml
 /relay-app
 /relay-app.exe
+relay.db
+relay.db-wal
+relay.db-shm

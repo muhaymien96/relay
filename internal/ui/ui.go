@@ -1,7 +1,8 @@
-// Package ui serves the embedded local-first web UI from the relay binary:
-// a request builder, collection tree, and response viewer over the same
-// engine the CLI uses. It binds to localhost only; the workspace directory
-// is the trust boundary for all file operations.
+// Package ui serves the Relay workbench (embedded single-page app) from the
+// relay binary: collections, request builder, runner, history, environments
+// and header presets, all backed by the SQLite store. It binds to localhost
+// only. The same handler powers `relay ui` (browser) and relay-app (Wails
+// desktop window).
 package ui
 
 import (
@@ -9,27 +10,28 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
-	"io/fs"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
+	"github.com/muhaymien96/relay/internal/assert"
 	"github.com/muhaymien96/relay/internal/dsl"
 	"github.com/muhaymien96/relay/internal/engine"
+	"github.com/muhaymien96/relay/internal/porter"
 	"github.com/muhaymien96/relay/internal/runner"
+	"github.com/muhaymien96/relay/internal/store"
 	"github.com/muhaymien96/relay/internal/vars"
 )
 
 //go:embed index.html
 var indexHTML []byte
 
-// Server hosts the UI for one workspace directory.
+// Server hosts the workbench for one store.
 type Server struct {
-	Root   string
+	DB     *store.Store
 	Engine engine.Options
 	Getenv func(string) string
 }
@@ -41,21 +43,50 @@ func (s *Server) Handler() http.Handler {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write(indexHTML)
 	})
-	mux.HandleFunc("GET /api/workspace", s.handleWorkspace)
-	mux.HandleFunc("GET /api/file", s.handleFileGet)
-	mux.HandleFunc("POST /api/file", s.handleFileSave)
+	mux.HandleFunc("GET /api/state", s.handleState)
+
+	mux.HandleFunc("POST /api/collections", s.handleCollectionCreate)
+	mux.HandleFunc("PATCH /api/collections/{id}", s.handleCollectionUpdate)
+	mux.HandleFunc("DELETE /api/collections/{id}", s.handleCollectionDelete)
+
+	mux.HandleFunc("POST /api/folders", s.handleFolderCreate)
+	mux.HandleFunc("PATCH /api/folders/{id}", s.handleFolderUpdate)
+	mux.HandleFunc("DELETE /api/folders/{id}", s.handleFolderDelete)
+
+	mux.HandleFunc("POST /api/requests", s.handleRequestCreate)
+	mux.HandleFunc("GET /api/requests/{id}", s.handleRequestGet)
+	mux.HandleFunc("PUT /api/requests/{id}", s.handleRequestUpdate)
+	mux.HandleFunc("DELETE /api/requests/{id}", s.handleRequestDelete)
+	mux.HandleFunc("GET /api/requests/{id}/stats", s.handleRequestStats)
+
+	mux.HandleFunc("GET /api/environments", s.handleEnvList)
+	mux.HandleFunc("PUT /api/environments/{name}", s.handleEnvPut)
+	mux.HandleFunc("DELETE /api/environments/{name}", s.handleEnvDelete)
+
+	mux.HandleFunc("GET /api/presets", s.handlePresetList)
+	mux.HandleFunc("POST /api/presets", s.handlePresetCreate)
+	mux.HandleFunc("PUT /api/presets/{id}", s.handlePresetUpdate)
+	mux.HandleFunc("DELETE /api/presets/{id}", s.handlePresetDelete)
+
 	mux.HandleFunc("POST /api/send", s.handleSend)
+	mux.HandleFunc("POST /api/run", s.handleRun)
+
+	mux.HandleFunc("GET /api/history", s.handleHistoryList)
+	mux.HandleFunc("GET /api/history/{id}", s.handleHistoryGet)
+
+	mux.HandleFunc("POST /api/import/postman", s.handleImportPostman)
+	mux.HandleFunc("GET /api/export", s.handleExport)
 	return mux
 }
 
-// ListenAndServe binds to 127.0.0.1:port (port 0 picks a free one), prints
-// the URL, and serves until ctx is done.
+// ListenAndServe binds to 127.0.0.1:port (0 picks a free one) and serves
+// until ctx is done.
 func (s *Server) ListenAndServe(ctx context.Context, port int) error {
 	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 	if err != nil {
 		return err
 	}
-	fmt.Printf("relay ui: http://%s  (workspace: %s)\n", ln.Addr(), s.Root)
+	fmt.Printf("relay ui: http://%s\n", ln.Addr())
 	srv := &http.Server{Handler: s.Handler()}
 	go func() {
 		<-ctx.Done()
@@ -67,213 +98,150 @@ func (s *Server) ListenAndServe(ctx context.Context, port int) error {
 	return nil
 }
 
-type treeEntry struct {
-	Path string `json:"path"` // workspace-relative, slash-separated
-	Name string `json:"name"`
+func (s *Server) getenv() func(string) string {
+	if s.Getenv != nil {
+		return s.Getenv
+	}
+	return os.Getenv
 }
 
-func (s *Server) handleWorkspace(w http.ResponseWriter, r *http.Request) {
-	var entries []treeEntry
-	err := filepath.WalkDir(s.Root, func(path string, d fs.DirEntry, err error) error {
+// resolveStored resolves a stored request: preset headers (collection then
+// folder level), collection/folder headers and vars, environment, auth.
+// Returns the resolved request, the scope, and any preset secret values
+// that must be masked in display surfaces.
+func (s *Server) resolveStored(req *store.Request, envName string) (*vars.Resolved, *vars.Scope, []string, error) {
+	col, err := s.DB.Collection(req.CollectionID)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("collection: %w", err)
+	}
+	var folder *store.Folder
+	if req.FolderID != nil {
+		if folder, err = s.DB.Folder(*req.FolderID); err != nil {
+			return nil, nil, nil, fmt.Errorf("folder: %w", err)
+		}
+	}
+	presetHeaders, presetSecrets, err := s.DB.PresetHeadersFor(req.CollectionID, req.FolderID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	inherited := map[string]string{}
+	for k, v := range presetHeaders {
+		inherited[k] = v
+	}
+	for k, v := range col.Headers {
+		inherited[k] = v
+	}
+	if folder != nil {
+		for k, v := range folder.Headers {
+			inherited[k] = v
+		}
+	}
+
+	var folderVars map[string]string
+	if folder != nil {
+		folderVars = folder.Vars
+	}
+	scope := vars.NewScope(req.Spec.Vars, folderVars, col.Vars)
+	if envName != "" {
+		env, err := s.DB.Environment(envName)
 		if err != nil {
-			return err
+			return nil, nil, nil, fmt.Errorf("environment %q not found", envName)
 		}
-		if d.IsDir() {
-			if strings.HasPrefix(d.Name(), ".") && path != s.Root {
-				return filepath.SkipDir
-			}
-			return nil
+		if err := scope.AddEnvironment(&dsl.Environment{Vars: env.Vars, Secrets: env.Secrets}, s.getenv()); err != nil {
+			return nil, nil, nil, err
 		}
-		if strings.HasSuffix(path, ".req.toml") {
-			rel, err := filepath.Rel(s.Root, path)
-			if err != nil {
-				return err
-			}
-			name := d.Name()
-			if req, err := dsl.LoadRequest(path); err == nil && req.Name != "" {
-				name = req.Name
-			}
-			entries = append(entries, treeEntry{Path: filepath.ToSlash(rel), Name: name})
-		}
-		return nil
-	})
-	if err != nil {
-		httpError(w, 500, err)
-		return
 	}
-	sort.Slice(entries, func(i, j int) bool { return entries[i].Path < entries[j].Path })
 
-	var envs []string
-	if matches, _ := filepath.Glob(filepath.Join(s.Root, "environments", "*.toml")); matches != nil {
-		for _, m := range matches {
-			envs = append(envs, strings.TrimSuffix(filepath.Base(m), ".toml"))
-		}
+	resolved, err := vars.Resolve(req.Spec, inherited, scope)
+	if err != nil {
+		return nil, nil, nil, err
 	}
-	writeJSON(w, map[string]any{
-		"root":         s.Root,
-		"requests":     entries,
-		"environments": envs,
-	})
+	return resolved, scope, presetSecrets, nil
 }
 
-// resolvePath confines a workspace-relative request path to the workspace
-// root and to .toml files.
-func (s *Server) resolvePath(rel string) (string, error) {
-	if !strings.HasSuffix(rel, ".toml") {
-		return "", fmt.Errorf("only .toml files can be accessed")
-	}
-	abs := filepath.Join(s.Root, filepath.FromSlash(rel))
-	abs = filepath.Clean(abs)
-	rootAbs, err := filepath.Abs(s.Root)
-	if err != nil {
-		return "", err
-	}
-	absAbs, err := filepath.Abs(abs)
-	if err != nil {
-		return "", err
-	}
-	if absAbs != rootAbs && !strings.HasPrefix(absAbs, rootAbs+string(filepath.Separator)) {
-		return "", fmt.Errorf("path escapes workspace")
-	}
-	return absAbs, nil
-}
-
-func (s *Server) handleFileGet(w http.ResponseWriter, r *http.Request) {
-	path, err := s.resolvePath(r.URL.Query().Get("path"))
-	if err != nil {
-		httpError(w, 400, err)
-		return
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		httpError(w, 404, err)
-		return
-	}
-	writeJSON(w, map[string]string{"content": string(data)})
-}
-
-func (s *Server) handleFileSave(w http.ResponseWriter, r *http.Request) {
-	var in struct {
-		Path    string `json:"path"`
-		Content string `json:"content"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpError(w, 400, err)
-		return
-	}
-	path, err := s.resolvePath(in.Path)
-	if err != nil {
-		httpError(w, 400, err)
-		return
-	}
-	// Validate before writing so a save can't corrupt a request file.
-	if strings.HasSuffix(path, ".req.toml") {
-		tmp := path + ".relay-validate"
-		if err := os.WriteFile(tmp, []byte(in.Content), 0o644); err != nil {
-			httpError(w, 500, err)
-			return
-		}
-		_, verr := dsl.LoadRequest(tmp)
-		_ = os.Remove(tmp)
-		if verr != nil {
-			httpError(w, 422, verr)
-			return
+func mask(s string, scope *vars.Scope, extraSecrets []string) string {
+	s = scope.MaskSecrets(s)
+	for _, v := range extraSecrets {
+		if v != "" {
+			s = strings.ReplaceAll(s, v, "••••••")
 		}
 	}
-	if err := os.WriteFile(path, []byte(in.Content), 0o644); err != nil {
-		httpError(w, 500, err)
-		return
-	}
-	writeJSON(w, map[string]bool{"ok": true})
+	return s
+}
+
+type sendResult struct {
+	Method         string             `json:"method"`
+	URL            string             `json:"url"`
+	RequestHeaders map[string]string  `json:"requestHeaders"`
+	HeaderOrigin   map[string]string  `json:"headerOrigin"`
+	Status         int                `json:"status"`
+	StatusText     string             `json:"statusText"`
+	Proto          string             `json:"proto"`
+	Headers        map[string]string  `json:"headers"`
+	Body           string             `json:"body"`
+	Truncated      bool               `json:"truncated"`
+	Size           int64              `json:"size"`
+	Timing         map[string]float64 `json:"timing"`
+	Assertions     []assertionResult  `json:"assertions,omitempty"`
+}
+
+type assertionResult struct {
+	Type    string `json:"type"`
+	Passed  bool   `json:"passed"`
+	Message string `json:"message"`
 }
 
 func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Path string `json:"path"`
-		Env  string `json:"env"`
+		RequestID int64  `json:"requestId"`
+		Env       string `json:"env"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		httpError(w, 400, err)
 		return
 	}
-	path, err := s.resolvePath(in.Path)
+	req, err := s.DB.Request(in.RequestID)
 	if err != nil {
-		httpError(w, 400, err)
+		httpError(w, 404, fmt.Errorf("request %d not found", in.RequestID))
 		return
 	}
-	req, err := dsl.LoadRequest(path)
+	out, status, err := s.execute(r.Context(), req, in.Env, true)
 	if err != nil {
-		httpError(w, 422, err)
+		httpError(w, status, err)
 		return
+	}
+	writeJSON(w, out)
+}
+
+// execute resolves, sends, asserts, and (optionally) records history.
+func (s *Server) execute(ctx context.Context, req *store.Request, envName string, record bool) (*sendResult, int, error) {
+	resolved, scope, presetSecrets, err := s.resolveStored(req, envName)
+	if err != nil {
+		return nil, 422, err
+	}
+	result, err := engine.Send(ctx, resolved, s.Engine)
+	if err != nil {
+		return nil, 502, err
 	}
 
-	var env *dsl.Environment
-	if in.Env != "" {
-		env, err = dsl.LoadEnvironment(filepath.Join(s.Root, "environments", in.Env+".toml"))
-		if err != nil {
-			httpError(w, 422, err)
-			return
-		}
-	}
-	getenv := s.Getenv
-	if getenv == nil {
-		getenv = os.Getenv
-	}
-	inherited, scopeVars, err := runner.InheritedConfig(s.Root, path)
+	asserts, err := runner.ResolveAssertions(req.Spec.Assertions, scope)
 	if err != nil {
-		httpError(w, 500, err)
-		return
+		return nil, 422, err
 	}
-	scope := vars.NewScope(req.Vars, scopeVars)
-	if err := scope.AddEnvironment(env, getenv); err != nil {
-		httpError(w, 422, err)
-		return
-	}
-	resolved, err := vars.Resolve(req, inherited, scope)
-	if err != nil {
-		httpError(w, 422, err)
-		return
-	}
+	outcomes := assert.Evaluate(asserts, result)
 
-	start := time.Now()
-	result, err := engine.Send(r.Context(), resolved, s.Engine)
-	if err != nil {
-		httpError(w, 502, err)
-		return
-	}
-	_ = start
-
-	// Secret-bearing header values are masked before they reach the UI.
-	reqHeaders := map[string]string{}
-	for k := range resolved.Headers {
-		reqHeaders[k] = scope.MaskSecrets(resolved.Headers.Get(k))
-	}
-	respHeaders := map[string]string{}
-	for k := range result.Headers {
-		respHeaders[k] = result.Headers.Get(k)
-	}
-
-	const uiBodyCap = 2 << 20
-	body := result.Body
-	truncated := false
-	if len(body) > uiBodyCap {
-		body = body[:uiBodyCap]
-		truncated = true
-	}
-
-	writeJSON(w, map[string]any{
-		"method":         resolved.Method,
-		"url":            scope.MaskSecrets(resolved.URL),
-		"requestHeaders": reqHeaders,
-		"headerOrigin":   resolved.HeaderOrigin,
-		"status":         result.Status,
-		"statusText":     result.StatusText,
-		"proto":          result.Proto,
-		"headers":        respHeaders,
-		"body":           string(body),
-		"truncated":      truncated,
-		"size":           result.Size,
-		"timing": map[string]float64{
+	out := &sendResult{
+		Method:         resolved.Method,
+		URL:            mask(resolved.URL, scope, presetSecrets),
+		RequestHeaders: map[string]string{},
+		HeaderOrigin:   resolved.HeaderOrigin,
+		Status:         result.Status,
+		StatusText:     result.StatusText,
+		Proto:          result.Proto,
+		Headers:        map[string]string{},
+		Size:           result.Size,
+		Timing: map[string]float64{
 			"dns":      ms(result.Timing.DNS),
 			"connect":  ms(result.Timing.Connect),
 			"tls":      ms(result.Timing.TLS),
@@ -281,7 +249,194 @@ func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
 			"download": ms(result.Timing.Download),
 			"total":    ms(result.Timing.Total),
 		},
+	}
+	for k := range resolved.Headers {
+		out.RequestHeaders[k] = mask(resolved.Headers.Get(k), scope, presetSecrets)
+	}
+	for k := range result.Headers {
+		out.Headers[k] = result.Headers.Get(k)
+	}
+	const uiBodyCap = 2 << 20
+	body := result.Body
+	if len(body) > uiBodyCap {
+		body, out.Truncated = body[:uiBodyCap], true
+	}
+	out.Body = string(body)
+	for _, o := range outcomes {
+		out.Assertions = append(out.Assertions, assertionResult{Type: o.Assertion.Type, Passed: o.Passed, Message: o.Message})
+	}
+
+	if record {
+		_ = s.DB.AddHistory(&store.HistoryEntry{
+			RequestID:   &req.ID,
+			RequestName: req.Spec.Name,
+			Method:      resolved.Method,
+			URL:         out.URL,
+			Status:      result.Status,
+			DurationMs:  out.Timing["total"],
+			RespHeaders: out.Headers,
+			RespBody:    body,
+			Timing:      out.Timing,
+			SentAt:      time.Now(),
+		})
+	}
+	return out, 200, nil
+}
+
+type runResult struct {
+	RequestID  int64             `json:"requestId"`
+	Name       string            `json:"name"`
+	Method     string            `json:"method"`
+	URL        string            `json:"url"`
+	Status     int               `json:"status"`
+	DurationMs float64           `json:"durationMs"`
+	Passed     bool              `json:"passed"`
+	Error      string            `json:"error,omitempty"`
+	Assertions []assertionResult `json:"assertions,omitempty"`
+}
+
+func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		CollectionID int64  `json:"collectionId"`
+		Env          string `json:"env"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		httpError(w, 400, err)
+		return
+	}
+	requests, err := s.DB.Requests(in.CollectionID)
+	if err != nil || len(requests) == 0 {
+		httpError(w, 404, fmt.Errorf("collection %d has no requests", in.CollectionID))
+		return
+	}
+
+	var results []runResult
+	var durations []float64
+	passed := 0
+	started := time.Now()
+	for i := range requests {
+		req := &requests[i]
+		rr := runResult{RequestID: req.ID, Name: req.Spec.Name, Method: req.Spec.Method, URL: req.Spec.URL}
+		out, _, err := s.execute(r.Context(), req, in.Env, false)
+		if err != nil {
+			rr.Error = err.Error()
+		} else {
+			rr.URL = out.URL
+			rr.Status = out.Status
+			rr.DurationMs = out.Timing["total"]
+			rr.Assertions = out.Assertions
+			rr.Passed = true
+			for _, a := range out.Assertions {
+				if !a.Passed {
+					rr.Passed = false
+				}
+			}
+			durations = append(durations, rr.DurationMs)
+		}
+		if rr.Passed {
+			passed++
+		}
+		results = append(results, rr)
+	}
+
+	writeJSON(w, map[string]any{
+		"results":    results,
+		"executed":   len(results),
+		"passed":     passed,
+		"failed":     len(results) - passed,
+		"p95Ms":      p95(durations),
+		"durationMs": float64(time.Since(started).Microseconds()) / 1000,
+		"finishedAt": time.Now().UTC().Format(time.RFC3339),
 	})
+}
+
+func p95(durations []float64) float64 {
+	if len(durations) == 0 {
+		return 0
+	}
+	sorted := append([]float64(nil), durations...)
+	for i := 1; i < len(sorted); i++ { // insertion sort; n is tiny
+		for j := i; j > 0 && sorted[j-1] > sorted[j]; j-- {
+			sorted[j-1], sorted[j] = sorted[j], sorted[j-1]
+		}
+	}
+	idx := (len(sorted)*95 + 99) / 100
+	if idx > 0 {
+		idx--
+	}
+	return sorted[idx]
+}
+
+func (s *Server) handleImportPostman(w http.ResponseWriter, r *http.Request) {
+	data, err := readBody(r, 20<<20)
+	if err != nil {
+		httpError(w, 400, err)
+		return
+	}
+	tmp, err := os.MkdirTemp("", "relay-import-*")
+	if err != nil {
+		httpError(w, 500, err)
+		return
+	}
+	defer os.RemoveAll(tmp)
+	n, err := porter.ImportPostman(data, tmp)
+	if err != nil {
+		httpError(w, 422, err)
+		return
+	}
+	colID, err := s.DB.SeedFromDir(tmp)
+	if err != nil {
+		httpError(w, 500, err)
+		return
+	}
+	writeJSON(w, map[string]any{"collectionId": colID, "requests": n})
+}
+
+func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
+	format := r.URL.Query().Get("format")
+	colID, err := atoi64(r.URL.Query().Get("collection"))
+	if err != nil {
+		httpError(w, 400, fmt.Errorf("collection query param required"))
+		return
+	}
+	tmp, err := os.MkdirTemp("", "relay-export-*")
+	if err != nil {
+		httpError(w, 500, err)
+		return
+	}
+	defer os.RemoveAll(tmp)
+	dir := filepath.Join(tmp, "collection")
+	if err := s.DB.ExportCollectionDir(colID, dir); err != nil {
+		httpError(w, 500, err)
+		return
+	}
+
+	var env *dsl.Environment
+	if name := r.URL.Query().Get("env"); name != "" {
+		e, err := s.DB.Environment(name)
+		if err != nil {
+			httpError(w, 404, fmt.Errorf("environment %q not found", name))
+			return
+		}
+		env = &dsl.Environment{Vars: e.Vars, Secrets: e.Secrets}
+	}
+
+	var script string
+	switch format {
+	case "k6":
+		script, err = porter.K6(dir, env)
+	case "playwright":
+		script, err = porter.Playwright(dir, env)
+	default:
+		httpError(w, 400, fmt.Errorf("format must be k6 or playwright"))
+		return
+	}
+	if err != nil {
+		httpError(w, 422, err)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	_, _ = w.Write([]byte(script))
 }
 
 func ms(d time.Duration) float64 { return float64(d.Microseconds()) / 1000 }

@@ -17,6 +17,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 
 	"github.com/muhaymien96/relay/internal/engine"
+	"github.com/muhaymien96/relay/internal/store"
 	"github.com/muhaymien96/relay/internal/ui"
 )
 
@@ -40,8 +41,17 @@ func main() {
 		fmt.Fprintln(os.Stderr, "relay-app:", err)
 		os.Exit(1)
 	}
+	db, err := store.Open(filepath.Join(abs, "relay.db"))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "relay-app:", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+	if empty, err := db.Empty(); err == nil && empty {
+		_, _ = db.SeedFromDir(abs)
+	}
 
-	srv := &ui.Server{Root: abs, Engine: engine.NewOptions()}
+	srv := &ui.Server{DB: db, Engine: engine.NewOptions()}
 	err = wails.Run(&options.App{
 		Title:     "Relay — " + filepath.Base(abs),
 		Width:     1280,

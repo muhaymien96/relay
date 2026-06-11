@@ -2,209 +2,893 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Relay</title>
+<title>Relay — API Workbench</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   :root {
-    --bg: #14161a; --panel: #1c1f26; --line: #2a2e38; --fg: #d8dce6;
-    --dim: #8a90a0; --accent: #4f9cf9; --ok: #3fb96f; --bad: #e5604c;
+    --bg: #f4f5fa; --panel: #ffffff; --line: #e6e8f2; --line2: #d9dcea;
+    --fg: #1c1f33; --dim: #7c819a; --faint: #a4a8bd;
+    --ink: #28287a; --ink-hover: #1d1d5e; --ink-soft: #eceefc;
+    --green: #0e9f6e; --red: #d64545; --amber: #c26a1b; --blue: #2563eb; --purple: #7c3aed;
     --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --radius: 10px;
   }
   * { box-sizing: border-box; }
+  html, body { height: 100%; }
   body { margin: 0; background: var(--bg); color: var(--fg);
-         font: 13px/1.5 system-ui, sans-serif; height: 100vh; display: flex; }
-  #sidebar { width: 260px; min-width: 180px; background: var(--panel);
-             border-right: 1px solid var(--line); display: flex; flex-direction: column; }
-  #brand { padding: 12px 14px; font-weight: 700; letter-spacing: .04em;
-           border-bottom: 1px solid var(--line); }
-  #brand small { color: var(--dim); font-weight: 400; margin-left: 6px; }
-  #tree { flex: 1; overflow: auto; padding: 6px 0; }
-  .req { padding: 5px 14px; cursor: pointer; white-space: nowrap; overflow: hidden;
-         text-overflow: ellipsis; }
-  .req:hover { background: #232733; }
-  .req.active { background: #263042; color: #fff; }
-  .req .dir { color: var(--dim); font-size: 11px; display: block; }
+         font: 13px/1.5 "Inter", system-ui, -apple-system, sans-serif;
+         display: flex; flex-direction: column; }
+  #app { flex: 1; display: flex; min-height: 0; }
+  button { font: inherit; cursor: pointer; }
+  input, select, textarea { font: inherit; color: var(--fg); }
+  input[type=text], input[type=password], select, textarea {
+    border: 1px solid var(--line2); border-radius: 7px; padding: 6px 9px;
+    background: #fff; outline: none; }
+  input:focus, textarea:focus, select:focus { border-color: var(--ink); }
+  ::placeholder { color: var(--faint); }
+
+  /* ---- nav rail ---- */
+  #rail { width: 185px; background: var(--panel); border-right: 1px solid var(--line);
+          display: flex; flex-direction: column; padding: 14px 10px; gap: 4px; }
+  #brand { display: flex; align-items: center; gap: 8px; padding: 0 6px 12px; }
+  #brand .logo { width: 26px; height: 26px; border-radius: 7px; background: var(--ink);
+                 color: #fff; display: grid; place-items: center; font-weight: 800; }
+  #brand b { font-size: 14px; } #brand small { display: block; color: var(--dim); font-size: 10px;
+             text-transform: uppercase; letter-spacing: .06em; }
+  #newReq { margin: 0 2px 12px; padding: 8px; border: 1px solid var(--line2); border-radius: 8px;
+            background: #fff; color: var(--fg); font-weight: 600; }
+  #newReq:hover { border-color: var(--ink); color: var(--ink); }
+  .navItem { display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: 8px;
+             color: var(--dim); border: 0; background: none; text-align: left; width: 100%; font-weight: 500; }
+  .navItem svg { width: 15px; height: 15px; flex: none; }
+  .navItem:hover { background: var(--ink-soft); color: var(--ink); }
+  .navItem.on { background: var(--ink-soft); color: var(--ink); font-weight: 700; }
+  .navItem .tag { margin-left: auto; font-size: 9px; color: var(--faint); border: 1px solid var(--line2);
+                  padding: 0 5px; border-radius: 99px; }
+  #railSpace { flex: 1; }
+
+  /* ---- side panel ---- */
+  #side { width: 248px; background: var(--panel); border-right: 1px solid var(--line);
+          display: flex; flex-direction: column; min-height: 0; }
+  #sideHead { padding: 14px 14px 8px; display: flex; align-items: center; }
+  #sideHead h2 { margin: 0; font-size: 11px; letter-spacing: .1em; color: var(--dim); font-weight: 700; }
+  #sideHead button { margin-left: auto; border: 0; background: none; color: var(--dim); font-size: 16px; }
+  #sideHead button:hover { color: var(--ink); }
+  #sideList { flex: 1; overflow: auto; padding: 2px 8px 12px; }
+  .colRow { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 7px;
+            cursor: pointer; font-weight: 600; }
+  .colRow:hover { background: var(--ink-soft); }
+  .colRow .car { color: var(--faint); font-size: 10px; width: 10px; }
+  .colRow .runBtn { margin-left: auto; border: 0; background: none; color: var(--faint); font-size: 12px; }
+  .colRow .runBtn:hover { color: var(--ink); }
+  .reqRow { display: flex; align-items: center; gap: 7px; padding: 5px 8px 5px 24px; border-radius: 7px;
+            cursor: pointer; color: var(--fg); }
+  .reqRow:hover { background: var(--ink-soft); }
+  .reqRow.on { background: var(--ink-soft); outline: 1px dashed var(--ink); }
+  .reqRow .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .folderRow { display: flex; align-items: center; gap: 6px; padding: 5px 8px 5px 18px; color: var(--dim);
+               font-weight: 600; }
+  .method { font-family: var(--mono); font-size: 9.5px; font-weight: 700; letter-spacing: .03em; }
+  .m-GET { color: var(--green); } .m-POST { color: var(--amber); } .m-PUT { color: var(--blue); }
+  .m-PATCH { color: var(--purple); } .m-DELETE { color: var(--red); }
+  .m-HEAD, .m-OPTIONS { color: var(--dim); }
+  .histRow, .presetRow, .envRow { padding: 8px 10px; border-radius: 7px; cursor: pointer; }
+  .histRow:hover, .presetRow:hover, .envRow:hover { background: var(--ink-soft); }
+  .presetRow.on, .envRow.on { background: var(--ink-soft); }
+  .presetRow b { display: block; }
+  .presetRow small, .histRow small, .envRow small { color: var(--dim); }
+
+  /* ---- main ---- */
   #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-  #toolbar { display: flex; gap: 8px; align-items: center; padding: 10px 14px;
-             border-bottom: 1px solid var(--line); background: var(--panel); }
-  #path { font-family: var(--mono); color: var(--dim); flex: 1; overflow: hidden;
-          text-overflow: ellipsis; white-space: nowrap; }
-  select, button { background: #262b36; color: var(--fg); border: 1px solid var(--line);
-                   border-radius: 6px; padding: 6px 12px; font-size: 13px; }
-  button { cursor: pointer; }
-  button.primary { background: var(--accent); border-color: var(--accent); color: #fff;
-                   font-weight: 600; }
-  button:disabled { opacity: .5; cursor: default; }
-  #panes { flex: 1; display: flex; min-height: 0; }
-  #editorPane, #respPane { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-  #editorPane { border-right: 1px solid var(--line); }
-  .paneHead { padding: 6px 14px; color: var(--dim); font-size: 11px;
-              text-transform: uppercase; letter-spacing: .08em;
-              border-bottom: 1px solid var(--line); display: flex; gap: 10px;
-              align-items: center; }
-  #editor { flex: 1; resize: none; border: 0; outline: 0; background: var(--bg);
-            color: var(--fg); font-family: var(--mono); font-size: 13px;
-            padding: 12px 14px; tab-size: 2; }
-  #respMeta { display: flex; gap: 14px; padding: 8px 14px; align-items: baseline;
-              border-bottom: 1px solid var(--line); font-family: var(--mono); }
-  #respStatus.ok { color: var(--ok); } #respStatus.bad { color: var(--bad); }
-  #respBody { flex: 1; overflow: auto; margin: 0; padding: 12px 14px;
-              font-family: var(--mono); font-size: 12.5px; white-space: pre-wrap;
-              word-break: break-word; }
-  #timing { padding: 8px 14px; border-top: 1px solid var(--line); color: var(--dim);
-            font-family: var(--mono); font-size: 12px; }
-  #timing b { color: var(--fg); font-weight: 600; }
-  .bar { display: inline-block; height: 8px; background: var(--accent);
-         border-radius: 2px; vertical-align: middle; }
-  #msg { color: var(--dim); margin-left: auto; }
-  #msg.err { color: var(--bad); }
-  .tabs button { border: 0; background: none; color: var(--dim); padding: 2px 6px; }
-  .tabs button.on { color: var(--fg); border-bottom: 2px solid var(--accent);
-                    border-radius: 0; }
+  #topbar { height: 50px; display: flex; align-items: center; gap: 10px; padding: 0 18px;
+            background: var(--panel); border-bottom: 1px solid var(--line); }
+  #crumb { color: var(--dim); font-weight: 600; }
+  #crumb b { color: var(--fg); }
+  #topbar .grow { flex: 1; }
+  .btn { border: 1px solid var(--line2); background: #fff; border-radius: 8px; padding: 7px 14px;
+         font-weight: 600; color: var(--fg); }
+  .btn:hover { border-color: var(--ink); color: var(--ink); }
+  .btn.dark { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .btn.dark:hover { background: var(--ink-hover); }
+  .btn:disabled { opacity: .5; pointer-events: none; }
+  #content { flex: 1; display: flex; min-height: 0; }
+  #work { flex: 1; display: flex; flex-direction: column; min-width: 0; padding: 16px 18px; gap: 14px;
+          overflow: auto; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+
+  /* request editor */
+  #urlRow { display: flex; gap: 8px; padding: 12px; align-items: center; }
+  #method { font-family: var(--mono); font-weight: 700; width: 96px; }
+  #url { flex: 1; font-family: var(--mono); font-size: 13px; }
+  #reqName { border: 0; font-weight: 700; font-size: 14px; width: 100%; padding: 0 0 2px; }
+  #reqName:focus { outline: none; border-bottom: 1px dashed var(--ink); }
+  .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); padding: 0 12px; }
+  .tabs button { border: 0; background: none; padding: 9px 12px; color: var(--dim); font-weight: 600;
+                 border-bottom: 2px solid transparent; }
+  .tabs button.on { color: var(--fg); border-bottom-color: var(--ink); }
+  .tabs button .n { background: var(--ink-soft); color: var(--ink); border-radius: 99px; font-size: 10px;
+                    padding: 0 6px; margin-left: 4px; }
+  .tabBody { padding: 12px; }
+  table.kv { width: 100%; border-collapse: collapse; }
+  table.kv th { text-align: left; font-size: 10px; letter-spacing: .08em; color: var(--dim);
+                text-transform: uppercase; padding: 4px 8px; border-bottom: 1px solid var(--line); }
+  table.kv td { padding: 4px 6px; border-bottom: 1px solid var(--line); }
+  table.kv input[type=text], table.kv input[type=password] { width: 100%; border: 0; background: none;
+                font-family: var(--mono); font-size: 12.5px; padding: 4px 2px; }
+  table.kv tr.inherited td { color: var(--dim); }
+  .origin { font-size: 9px; color: var(--faint); border: 1px solid var(--line2); border-radius: 99px;
+            padding: 0 6px; white-space: nowrap; }
+  .delRow { border: 0; background: none; color: var(--faint); }
+  .delRow:hover { color: var(--red); }
+  .addRow { margin-top: 8px; border: 1px dashed var(--line2); background: none; color: var(--dim);
+            width: 100%; padding: 7px; border-radius: 7px; }
+  .addRow:hover { color: var(--ink); border-color: var(--ink); }
+  textarea.body { width: 100%; min-height: 170px; font-family: var(--mono); font-size: 12.5px;
+                  resize: vertical; }
+  .formRow { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+  .formRow label { width: 110px; color: var(--dim); font-weight: 600; }
+  .formRow input, .formRow select { flex: 1; max-width: 420px; }
+
+  /* response */
+  #respMeta { display: flex; gap: 16px; align-items: baseline; padding: 10px 14px;
+              border-bottom: 1px solid var(--line); font-family: var(--mono); font-size: 12.5px; }
+  #respMeta .lbl { font-size: 10px; letter-spacing: .1em; color: var(--dim); font-weight: 700; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }
+  .pill .dot { width: 7px; height: 7px; border-radius: 99px; background: var(--green); }
+  .pill.bad .dot { background: var(--red); }
+  .pill.bad { color: var(--red); } .pill.ok { color: var(--green); }
+  #respBody { margin: 0; padding: 12px 14px; font-family: var(--mono); font-size: 12.5px;
+              white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow: auto; }
+  .json-k { color: var(--ink); } .json-s { color: #0d7a52; } .json-n { color: #b45309; }
+  #assertChips { padding: 8px 14px 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip { font-size: 11px; border-radius: 99px; padding: 2px 10px; font-weight: 600; }
+  .chip.ok { background: #e7f7f0; color: var(--green); }
+  .chip.bad { background: #fdecec; color: var(--red); }
+  #timingBars { padding: 10px 14px; font-family: var(--mono); font-size: 11.5px; color: var(--dim); }
+  #timingBars b { color: var(--fg); }
+  .bar { display: inline-block; height: 7px; background: var(--ink); border-radius: 2px;
+         vertical-align: middle; margin: 0 10px 0 4px; }
+
+  /* meta side panel */
+  #meta { width: 230px; border-left: 1px solid var(--line); background: var(--panel); padding: 16px 14px;
+          overflow: auto; }
+  #meta h3 { margin: 0 0 10px; font-size: 13px; }
+  .metaCard { border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin-bottom: 12px; }
+  .metaCard .lbl { font-size: 9.5px; letter-spacing: .1em; color: var(--dim); font-weight: 700;
+                   text-transform: uppercase; display: block; margin-bottom: 6px; }
+  .metric { display: inline-block; margin-right: 14px; }
+  .metric b { display: block; font-size: 15px; color: var(--ink); }
+  .metric span { font-size: 10px; color: var(--dim); }
+
+  /* runner view */
+  .sumRow { display: flex; gap: 12px; }
+  .sumCard { flex: 1; border-left: 3px solid var(--line2); padding: 10px 14px; }
+  .sumCard .lbl { font-size: 9.5px; letter-spacing: .1em; color: var(--dim); font-weight: 700;
+                  text-transform: uppercase; }
+  .sumCard b { font-size: 20px; font-family: var(--mono); }
+  .sumCard.green { border-left-color: var(--green); } .sumCard.red { border-left-color: var(--red); }
+  .runRow { display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+            border-bottom: 1px solid var(--line); }
+  .runRow .ic { font-weight: 800; }
+  .runRow .ic.ok { color: var(--green); } .runRow .ic.bad { color: var(--red); }
+  .runErr { font-family: var(--mono); font-size: 12px; color: var(--red); background: #fdf3f3;
+            border: 1px solid #f3d4d4; border-radius: 7px; padding: 8px 12px; margin: 0 14px 10px 38px; }
+  .xrayCard { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: #f1f2f9;
+              border-radius: 0 0 var(--radius) var(--radius); color: var(--dim); }
+  .badge { font-size: 10px; font-weight: 800; letter-spacing: .05em; border-radius: 4px; padding: 2px 8px; }
+  .badge.fail { background: #fdecec; color: var(--red); border: 1px solid #f3c8c8; }
+  .badge.pass { background: #e7f7f0; color: var(--green); border: 1px solid #c4ebd9; }
+
+  /* footer */
+  #statusbar { height: 24px; background: var(--panel); border-top: 1px solid var(--line);
+               display: flex; align-items: center; gap: 18px; padding: 0 14px; font-family: var(--mono);
+               font-size: 10.5px; color: var(--dim); }
+  #statusbar .dot { width: 6px; height: 6px; border-radius: 99px; background: var(--green);
+                    display: inline-block; margin-right: 5px; }
+  #toast { position: fixed; bottom: 38px; right: 16px; background: var(--ink); color: #fff;
+           border-radius: 8px; padding: 9px 14px; font-weight: 600; display: none; max-width: 420px; }
+  #toast.err { background: var(--red); }
+  .secLock { color: var(--faint); cursor: pointer; }
+  .secLock.on { color: var(--ink); }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chips .att { border: 1px solid var(--line2); border-radius: 99px; padding: 3px 12px; font-weight: 600;
+                background: #fff; }
+  .chips .att.on { background: var(--ink-soft); border-color: var(--ink); color: var(--ink); }
+  .note { background: #f1f2f9; border-radius: 7px; padding: 9px 12px; color: var(--dim); font-style: italic; }
+  .empty { color: var(--dim); padding: 40px; text-align: center; }
 </style>
 </head>
 <body>
-  <div id="sidebar">
-    <div id="brand">RELAY<small>local-first</small></div>
-    <div id="tree"></div>
-  </div>
+<div id="app">
+  <nav id="rail">
+    <div id="brand"><div class="logo">R</div><div><b>Relay</b><small>API Workbench</small></div></div>
+    <button id="newReq">New Request</button>
+    <button class="navItem on" data-view="collections">▦ Collections</button>
+    <button class="navItem" data-view="history">⟲ History</button>
+    <button class="navItem" data-view="environments">⛁ Environments</button>
+    <button class="navItem" data-view="presets">☰ Header Presets</button>
+    <button class="navItem" disabled>▣ Mock Servers <span class="tag">v2</span></button>
+    <button class="navItem" disabled>◉ Monitor <span class="tag">v2</span></button>
+    <div id="railSpace"></div>
+    <button class="navItem" disabled>⚙ Settings</button>
+  </nav>
+  <aside id="side">
+    <div id="sideHead"><h2 id="sideTitle">COLLECTIONS</h2><button id="sideAdd" title="add">+</button></div>
+    <div id="sideList"></div>
+  </aside>
   <div id="main">
-    <div id="toolbar">
-      <span id="path">select a request</span>
-      <select id="env"><option value="">(no environment)</option></select>
-      <button id="save">Save</button>
-      <button id="send" class="primary">Send ▸</button>
-      <span id="msg"></span>
+    <div id="topbar">
+      <span id="crumb">Workspace</span>
+      <span class="grow"></span>
+      <select id="envSel"><option value="">No environment</option></select>
+      <button class="btn" id="importBtn">Import</button>
+      <button class="btn" id="exportBtn">Export ▾</button>
     </div>
-    <div id="panes">
-      <div id="editorPane">
-        <div class="paneHead">request (.req.toml)</div>
-        <textarea id="editor" spellcheck="false" placeholder="# pick a request from the tree"></textarea>
-      </div>
-      <div id="respPane">
-        <div class="paneHead">
-          response
-          <span class="tabs">
-            <button id="tabPretty" class="on">pretty</button>
-            <button id="tabRaw">raw</button>
-            <button id="tabHeaders">headers</button>
-          </span>
-        </div>
-        <div id="respMeta"><span id="respStatus">—</span><span id="respTime"></span><span id="respSize"></span></div>
-        <pre id="respBody"></pre>
-        <div id="timing"></div>
-      </div>
+    <div id="content">
+      <div id="work"><div class="empty">Select a request, or create one.</div></div>
+      <div id="meta" hidden></div>
     </div>
   </div>
-<script>
-const $ = (id) => document.getElementById(id);
-let current = null, last = null, tab = 'pretty';
+</div>
+<div id="statusbar"><span><span class="dot"></span>AGENT ONLINE</span><span>relay 0.2.0</span><span id="dbinfo">sqlite</span></div>
+<div id="toast"></div>
+<input type="file" id="importFile" accept=".json" hidden>
 
-async function api(url, opts) {
+<script>
+'use strict';
+const $ = (id) => document.getElementById(id);
+const h = (tag, attrs = {}, ...kids) => {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'class') el.className = v;
+    else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
+    else if (v !== undefined && v !== null) el.setAttribute(k, v);
+  }
+  for (const k of kids.flat()) el.append(k);
+  return el;
+};
+const esc = (s) => String(s ?? '');
+const METHODS = ['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS'];
+
+const S = {
+  view: 'collections', state: { collections: [], environments: [], presets: [] },
+  openCols: new Set(), reqId: null, req: null, tab: 'headers',
+  last: null, run: null, presetId: null, envName: localStorage.envName || '',
+  history: [],
+};
+
+async function api(url, opts = {}) {
+  if (opts.body && typeof opts.body !== 'string') {
+    opts.body = JSON.stringify(opts.body);
+    opts.headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+  }
   const r = await fetch(url, opts);
-  const data = await r.json();
-  if (!r.ok) throw new Error(data.error || r.statusText);
+  const ct = r.headers.get('Content-Type') || '';
+  const data = ct.includes('json') ? await r.json() : await r.text();
+  if (!r.ok) throw new Error((data && data.error) || r.statusText);
   return data;
 }
-function msg(text, err) {
-  $('msg').textContent = text;
-  $('msg').className = err ? 'err' : '';
-  if (!err && text) setTimeout(() => { if ($('msg').textContent === text) $('msg').textContent = ''; }, 2500);
+let toastTimer;
+function toast(msg, err) {
+  const t = $('toast');
+  t.textContent = msg; t.className = err ? 'err' : ''; t.style.display = 'block';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.style.display = 'none', err ? 5000 : 2200);
 }
 
-async function loadWorkspace() {
-  const ws = await api('/api/workspace');
-  const tree = $('tree');
-  tree.innerHTML = '';
-  for (const req of ws.requests || []) {
-    const div = document.createElement('div');
-    div.className = 'req';
-    div.dataset.path = req.path;
-    const dir = req.path.includes('/') ? req.path.slice(0, req.path.lastIndexOf('/')) : '';
-    div.innerHTML = (dir ? `<span class="dir">${esc(dir)}/</span>` : '') + esc(req.name);
-    div.onclick = () => open(req.path);
-    tree.appendChild(div);
+async function refresh() {
+  S.state = await api('/api/state');
+  renderEnvSel(); renderSide();
+}
+function findReqMeta(id) {
+  for (const c of S.state.collections)
+    for (const q of c.requests) if (q.id === id) return { col: c, meta: q };
+  return null;
+}
+
+/* ---------- nav + side panel ---------- */
+document.querySelectorAll('.navItem[data-view]').forEach(b => b.onclick = () => {
+  S.view = b.dataset.view;
+  document.querySelectorAll('.navItem').forEach(x => x.classList.toggle('on', x === b));
+  renderSide();
+  if (S.view === 'history') renderHistoryView();
+  if (S.view === 'environments') renderEnvView();
+  if (S.view === 'presets') renderPresetView();
+  if (S.view === 'collections' && S.reqId) openRequest(S.reqId);
+});
+
+function renderSide() {
+  const list = $('sideList'); list.innerHTML = '';
+  const titles = { collections: 'COLLECTIONS', history: 'HISTORY', environments: 'ENVIRONMENTS', presets: 'HEADER PRESETS' };
+  $('sideTitle').textContent = titles[S.view];
+  $('sideAdd').style.visibility = S.view === 'history' ? 'hidden' : 'visible';
+
+  if (S.view === 'collections') {
+    for (const c of S.state.collections || []) {
+      const open = S.openCols.has(c.id);
+      list.append(h('div', { class: 'colRow', onclick: () => { open ? S.openCols.delete(c.id) : S.openCols.add(c.id); renderSide(); } },
+        h('span', { class: 'car' }, open ? '▾' : '▸'), '🗀 ', c.name,
+        h('button', { class: 'runBtn', title: 'Run collection', onclick: (e) => { e.stopPropagation(); runCollection(c); } }, '▶')));
+      if (!open) continue;
+      const byFolder = (fid) => c.requests.filter(q => String(q.folderId) === String(fid));
+      for (const q of byFolder(null)) list.append(reqRow(q));
+      for (const f of c.folders) {
+        list.append(h('div', { class: 'folderRow' }, '🗀 ', f.name));
+        for (const q of byFolder(f.id)) list.append(reqRow(q));
+      }
+    }
+  } else if (S.view === 'history') {
+    for (const e of S.history) {
+      list.append(h('div', { class: 'histRow', onclick: () => showHistory(e.id) },
+        h('span', { class: 'method m-' + e.method }, e.method + ' '),
+        esc(e.requestName),
+        h('small', {}, ` — ${e.status} · ${e.durationMs.toFixed(0)}ms`)));
+    }
+    if (!S.history.length) list.append(h('div', { class: 'histRow' }, h('small', {}, 'No sends yet')));
+  } else if (S.view === 'environments') {
+    for (const e of S.state.environments || [])
+      list.append(h('div', { class: 'envRow' + (S.envEdit === e.name ? ' on' : ''), onclick: () => renderEnvView(e.name) },
+        '⛁ ', e.name, h('small', {}, ` · ${Object.keys(e.vars || {}).length} vars`)));
+  } else if (S.view === 'presets') {
+    for (const p of S.state.presets || []) {
+      const atts = (p.attachments || []).length;
+      list.append(h('div', { class: 'presetRow' + (S.presetId === p.id ? ' on' : ''), onclick: () => renderPresetView(p.id) },
+        h('b', {}, '⛉ ' + p.name),
+        h('small', {}, `${(p.headers || []).length} headers · ${atts} attached`)));
+    }
   }
-  const envSel = $('env');
-  for (const e of ws.environments || []) {
-    const o = document.createElement('option');
-    o.value = e; o.textContent = e;
-    envSel.appendChild(o);
+}
+function reqRow(q) {
+  return h('div', { class: 'reqRow' + (q.id === S.reqId ? ' on' : ''), onclick: () => openRequest(q.id) },
+    h('span', { class: 'method m-' + q.method }, q.method),
+    h('span', { class: 'nm' }, q.name));
+}
+
+$('sideAdd').onclick = async () => {
+  try {
+    if (S.view === 'collections') {
+      const name = prompt('New collection name'); if (!name) return;
+      await api('/api/collections', { method: 'POST', body: { name, headers: {}, vars: {} } });
+    } else if (S.view === 'environments') {
+      const name = prompt('New environment name'); if (!name) return;
+      await api('/api/environments/' + encodeURIComponent(name), { method: 'PUT', body: { vars: {}, secrets: [] } });
+    } else if (S.view === 'presets') {
+      const name = prompt('New preset name'); if (!name) return;
+      await api('/api/presets', { method: 'POST', body: { name, description: '', headers: [], attachments: [] } });
+    }
+    await refresh();
+  } catch (e) { toast(e.message, true); }
+};
+
+$('newReq').onclick = async () => {
+  try {
+    let col = S.state.collections[0];
+    if (!col) {
+      await api('/api/collections', { method: 'POST', body: { name: 'My Collection', headers: {}, vars: {} } });
+      await refresh(); col = S.state.collections[0];
+    }
+    const created = await api('/api/requests', { method: 'POST',
+      body: { collectionId: col.id, spec: { name: 'Untitled', method: 'GET', url: 'https://' } } });
+    S.openCols.add(col.id);
+    await refresh();
+    openRequest(created.id);
+  } catch (e) { toast(e.message, true); }
+};
+
+/* ---------- environment select / import / export ---------- */
+function renderEnvSel() {
+  const sel = $('envSel'); sel.innerHTML = '<option value="">No environment</option>';
+  for (const e of S.state.environments || []) sel.append(h('option', { value: e.name }, e.name));
+  sel.value = S.state.environments.some(e => e.name === S.envName) ? S.envName : '';
+}
+$('envSel').onchange = () => { S.envName = $('envSel').value; localStorage.envName = S.envName; };
+
+$('importBtn').onclick = () => $('importFile').click();
+$('importFile').onchange = async () => {
+  const f = $('importFile').files[0]; if (!f) return;
+  try {
+    const out = await api('/api/import/postman', { method: 'POST', body: await f.text() });
+    toast(`Imported ${out.requests} requests`);
+    await refresh();
+  } catch (e) { toast(e.message, true); }
+  $('importFile').value = '';
+};
+$('exportBtn').onclick = async () => {
+  const meta = S.reqId && findReqMeta(S.reqId);
+  const col = meta ? meta.col : S.state.collections[0];
+  if (!col) return toast('No collection to export', true);
+  const format = prompt('Export format: k6 or playwright', 'k6');
+  if (!format) return;
+  try {
+    const text = await api(`/api/export?format=${encodeURIComponent(format)}&collection=${col.id}&env=${encodeURIComponent(S.envName)}`);
+    const blob = new Blob([text], { type: 'text/plain' });
+    const a = h('a', { href: URL.createObjectURL(blob), download: format === 'k6' ? 'load.js' : 'api.spec.ts' });
+    a.click(); URL.revokeObjectURL(a.href);
+  } catch (e) { toast(e.message, true); }
+};
+
+/* ---------- request workbench ---------- */
+async function openRequest(id) {
+  try {
+    const r = await api('/api/requests/' + id);
+    S.reqId = id; S.req = r; S.last = null;
+    renderSide(); renderRequest();
+    loadStats(id);
+  } catch (e) { toast(e.message, true); }
+}
+
+function kvTable(obj, { onchange, secretKeys } = {}) {
+  obj = obj || {};
+  const table = h('table', { class: 'kv' },
+    h('tr', {}, h('th', { style: 'width:34%' }, 'Key'), h('th', {}, 'Value'), h('th', { style: 'width:30px' }, '')));
+  const rows = Object.entries(obj);
+  const sync = () => {
+    const next = {};
+    for (const tr of table.querySelectorAll('tr[data-row]')) {
+      const [k, v] = tr.querySelectorAll('input');
+      if (k.value.trim()) next[k.value.trim()] = v.value;
+    }
+    onchange(next);
+  };
+  const addRow = (k = '', v = '') => {
+    const tr = h('tr', { 'data-row': 1 },
+      h('td', {}, h('input', { type: 'text', value: k, placeholder: 'Key', onchange: sync })),
+      h('td', {}, h('input', { type: 'text', value: v, placeholder: 'Value', onchange: sync })),
+      h('td', {}, h('button', { class: 'delRow', onclick: () => { tr.remove(); sync(); } }, '✕')));
+    table.append(tr);
+  };
+  rows.forEach(([k, v]) => addRow(k, v));
+  const wrap = h('div', {}, table,
+    h('button', { class: 'addRow', onclick: () => addRow() }, '+ Add row'));
+  return wrap;
+}
+
+function inheritedHeaderRows() {
+  const meta = findReqMeta(S.reqId); if (!meta) return null;
+  const col = meta.col;
+  const folder = col.folders.find(f => String(f.id) === String(S.req.folderId));
+  const rows = [];
+  for (const p of S.state.presets || []) {
+    const attached = (p.attachments || []).some(a =>
+      (a.collectionId && a.collectionId === col.id) || (folder && a.folderId === folder.id));
+    if (!attached) continue;
+    for (const ph of p.headers || [])
+      rows.push([ph.key, ph.secret ? '••••••' : ph.value, 'preset: ' + p.name]);
   }
+  for (const [k, v] of Object.entries(col.headers || {})) rows.push([k, v, 'collection']);
+  if (folder) for (const [k, v] of Object.entries(folder.headers || {})) rows.push([k, v, 'folder']);
+  if (!rows.length) return null;
+  const table = h('table', { class: 'kv' },
+    h('tr', {}, h('th', { style: 'width:34%' }, 'Inherited'), h('th', {}, 'Value'), h('th', {}, 'From')));
+  for (const [k, v, o] of rows)
+    table.append(h('tr', { class: 'inherited' }, h('td', {}, k), h('td', {}, esc(v)),
+      h('td', {}, h('span', { class: 'origin' }, o))));
+  return h('div', { style: 'margin-bottom:12px' }, table,
+    h('div', { style: 'color:var(--faint);font-size:11px;margin-top:4px' },
+      'Override by re-declaring the key below; set it to an empty value to disable it.'));
 }
-async function open(path) {
-  try {
-    const f = await api('/api/file?path=' + encodeURIComponent(path));
-    current = path;
-    $('editor').value = f.content;
-    $('path').textContent = path;
-    document.querySelectorAll('.req').forEach(el =>
-      el.classList.toggle('active', el.dataset.path === path));
-  } catch (e) { msg(e.message, true); }
+
+function renderRequest() {
+  const spec = S.req.spec;
+  const meta = findReqMeta(S.reqId);
+  $('crumb').innerHTML = '';
+  $('crumb').append('Workspace / ', h('b', {}, meta ? meta.col.name : ''), ' / ', spec.name);
+
+  const work = $('work'); work.innerHTML = '';
+  const save = debounce(saveRequest, 500);
+
+  const editor = h('div', { class: 'card' },
+    h('div', { style: 'padding:12px 12px 0' },
+      h('input', { id: 'reqName', value: spec.name, onchange: (e) => { spec.name = e.target.value; save(); } })),
+    h('div', { id: 'urlRow' },
+      h('select', { id: 'method', onchange: (e) => { spec.method = e.target.value; save(); } },
+        METHODS.map(m => h('option', { value: m, selected: spec.method === m ? '' : undefined }, m))),
+      h('input', { id: 'url', value: spec.url, placeholder: 'https://{{baseUrl}}/path',
+        onchange: (e) => { spec.url = e.target.value; save(); } }),
+      h('button', { class: 'btn dark', id: 'sendBtn', onclick: send }, 'Send'),
+    ),
+    h('div', { class: 'tabs' }, ['params', 'authorization', 'headers', 'body', 'assertions', 'vars'].map(t =>
+      h('button', { class: S.tab === t ? 'on' : '', onclick: () => { S.tab = t; renderRequest(); } },
+        t[0].toUpperCase() + t.slice(1),
+        t === 'headers' && Object.keys(spec.headers || {}).length ? h('span', { class: 'n' }, Object.keys(spec.headers).length) : ''))),
+    h('div', { class: 'tabBody', id: 'tabBody' }));
+  work.append(editor);
+
+  const tb = editor.querySelector('#tabBody');
+  if (S.tab === 'params') {
+    tb.append(kvTable(spec.query, { onchange: (v) => { spec.query = v; save(); } }));
+  } else if (S.tab === 'headers') {
+    const inh = inheritedHeaderRows(); if (inh) tb.append(inh);
+    tb.append(kvTable(spec.headers, { onchange: (v) => { spec.headers = v; save(); } }));
+  } else if (S.tab === 'vars') {
+    tb.append(kvTable(spec.vars, { onchange: (v) => { spec.vars = v; save(); } }));
+  } else if (S.tab === 'authorization') {
+    const auth = spec.auth || { type: '' };
+    const set = (k, v) => { spec.auth = { ...auth, [k]: v }; if (!spec.auth.type) spec.auth = null; save(); renderRequest(); };
+    tb.append(h('div', { class: 'formRow' }, h('label', {}, 'Type'),
+      h('select', { onchange: (e) => set('type', e.target.value) },
+        ['', 'bearer', 'basic', 'apikey'].map(t => h('option', { value: t, selected: (auth.type || '') === t ? '' : undefined }, t || 'none')))));
+    if (auth.type === 'bearer')
+      tb.append(h('div', { class: 'formRow' }, h('label', {}, 'Token'),
+        h('input', { type: 'text', value: auth.token || '', placeholder: '{{apiToken}}', onchange: (e) => set('token', e.target.value) })));
+    if (auth.type === 'basic') {
+      tb.append(h('div', { class: 'formRow' }, h('label', {}, 'Username'),
+        h('input', { type: 'text', value: auth.username || '', onchange: (e) => set('username', e.target.value) })));
+      tb.append(h('div', { class: 'formRow' }, h('label', {}, 'Password'),
+        h('input', { type: 'text', value: auth.password || '', placeholder: '{{password}}', onchange: (e) => set('password', e.target.value) })));
+    }
+    if (auth.type === 'apikey') {
+      tb.append(h('div', { class: 'formRow' }, h('label', {}, 'Header/param'),
+        h('input', { type: 'text', value: auth.key || '', placeholder: 'X-Api-Key', onchange: (e) => set('key', e.target.value) })));
+      tb.append(h('div', { class: 'formRow' }, h('label', {}, 'Value'),
+        h('input', { type: 'text', value: auth.value || '', placeholder: '{{apiKey}}', onchange: (e) => set('value', e.target.value) })));
+      tb.append(h('div', { class: 'formRow' }, h('label', {}, 'In'),
+        h('select', { onchange: (e) => set('in', e.target.value) },
+          ['header', 'query'].map(t => h('option', { value: t, selected: (auth.in || 'header') === t ? '' : undefined }, t)))));
+    }
+    tb.append(h('div', { class: 'note' }, 'Reference secrets by variable ({{apiToken}}) — values come from the selected environment and RELAY_SECRET_* and are masked everywhere.'));
+  } else if (S.tab === 'body') {
+    const body = spec.body || { type: 'json', content: '' };
+    tb.append(h('div', { class: 'formRow' }, h('label', {}, 'Type'),
+      h('select', { onchange: (e) => { spec.body = { ...body, type: e.target.value }; save(); } },
+        ['json', 'xml', 'raw', 'urlencoded'].map(t => h('option', { value: t, selected: body.type === t ? '' : undefined }, t)))));
+    tb.append(h('textarea', { class: 'body', placeholder: '{ "id": "{{testIdNumber}}" }',
+      onchange: (e) => { spec.body = { ...body, content: e.target.value }; if (!spec.body.content) spec.body = null; save(); } }, body.content || ''));
+  } else if (S.tab === 'assertions') {
+    const asserts = spec.assertions || [];
+    const table = h('table', { class: 'kv' },
+      h('tr', {}, h('th', { style: 'width:110px' }, 'Type'), h('th', {}, 'Path / Name'), h('th', {}, 'Expected'), h('th', { style: 'width:30px' }, '')));
+    const sync = () => {
+      const next = [];
+      for (const tr of table.querySelectorAll('tr[data-row]')) {
+        const type = tr.querySelector('select').value;
+        const [p, eq] = tr.querySelectorAll('input');
+        const a = { type };
+        if (type === 'status') a.equals = parseInt(eq.value, 10) || 200;
+        else if (type === 'jsonpath') { a.path = p.value; a.equals = eq.value; }
+        else if (type === 'header') { a.name = p.value; a.equals = eq.value; }
+        else if (type === 'contains') a.contains = eq.value;
+        else if (type === 'max_ms') a.max_ms = parseInt(eq.value, 10) || 1000;
+        next.push(a);
+      }
+      spec.assertions = next; save();
+    };
+    const addRow = (a = { type: 'status', equals: 200 }) => {
+      table.append(h('tr', { 'data-row': 1 },
+        h('td', {}, h('select', { onchange: sync },
+          ['status', 'jsonpath', 'header', 'contains', 'max_ms'].map(t => h('option', { value: t, selected: a.type === t ? '' : undefined }, t)))),
+        h('td', {}, h('input', { type: 'text', value: a.path || a.name || '', placeholder: '$.result.status', onchange: sync })),
+        h('td', {}, h('input', { type: 'text', value: a.equals ?? a.contains ?? a.max_ms ?? '', onchange: sync })),
+        h('td', {}, h('button', { class: 'delRow', onclick: (e) => { e.target.closest('tr').remove(); sync(); } }, '✕'))));
+    };
+    asserts.forEach(addRow);
+    tb.append(table, h('button', { class: 'addRow', onclick: () => addRow() }, '+ Add assertion'));
+  }
+
+  // response card
+  const resp = h('div', { class: 'card', id: 'respCard' });
+  renderResponse(resp);
+  work.append(resp);
+
+  renderMeta();
 }
-async function save() {
-  if (!current) return;
-  try {
-    await api('/api/file', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: current, content: $('editor').value }) });
-    msg('saved');
-  } catch (e) { msg(e.message, true); }
-}
-async function send() {
-  if (!current) return;
-  $('send').disabled = true;
-  msg('sending…');
-  try {
-    await save();
-    last = await api('/api/send', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: current, env: $('env').value }) });
-    render();
-    msg('');
-  } catch (e) {
-    msg(e.message, true);
-    $('respStatus').textContent = '—'; $('respStatus').className = '';
-    $('respBody').textContent = e.message;
-  } finally { $('send').disabled = false; }
-}
-function render() {
-  if (!last) return;
-  const s = $('respStatus');
-  s.textContent = `${last.method} → ${last.statusText}`;
-  s.className = last.status >= 200 && last.status < 400 ? 'ok' : 'bad';
-  $('respTime').textContent = last.timing.total.toFixed(1) + ' ms';
-  $('respSize').textContent = fmtSize(last.size) + (last.truncated ? ' (truncated view)' : '');
-  let text;
-  if (tab === 'headers') {
-    text = Object.entries(last.headers).map(([k, v]) => `${k}: ${v}`).join('\n');
-  } else if (tab === 'pretty') {
-    try { text = JSON.stringify(JSON.parse(last.body), null, 2); }
-    catch { text = last.body; }
+
+function renderResponse(card) {
+  card = card || $('respCard'); if (!card) return;
+  card.innerHTML = '';
+  const r = S.last;
+  const metaBar = h('div', { id: 'respMeta' }, h('span', { class: 'lbl' }, 'RESPONSE'));
+  if (!r) {
+    metaBar.append(h('span', { style: 'color:var(--faint)' }, '—'));
+    card.append(metaBar);
+    return;
+  }
+  const ok = r.status >= 200 && r.status < 400;
+  metaBar.append(
+    h('span', { class: 'pill ' + (ok ? 'ok' : 'bad') }, h('span', { class: 'dot' }), `${r.status} ${esc(r.statusText).replace(/^\d+ /, '')}`),
+    h('span', {}, `Time: ${r.timing.total.toFixed(0)}ms`),
+    h('span', {}, `Size: ${fmtSize(r.size)}${r.truncated ? ' (view truncated)' : ''}`));
+  const tabs = h('div', { class: 'tabs' }, ['body', 'headers', 'timing'].map(t =>
+    h('button', { class: (S.respTab || 'body') === t ? 'on' : '', onclick: () => { S.respTab = t; renderResponse(); } },
+      t[0].toUpperCase() + t.slice(1))));
+  card.append(metaBar, tabs);
+  const t = S.respTab || 'body';
+  if (t === 'body') {
+    card.append(h('pre', { id: 'respBody' }, ...prettyJSON(r.body)));
+  } else if (t === 'headers') {
+    card.append(h('pre', { id: 'respBody' },
+      Object.entries(r.headers).map(([k, v]) => `${k}: ${v}`).join('\n') +
+      '\n\n--- request headers (as sent) ---\n' +
+      Object.entries(r.requestHeaders).map(([k, v]) => `${k}: ${v}${r.headerOrigin[k] && r.headerOrigin[k] !== 'request' ? '   [' + r.headerOrigin[k] + ']' : ''}`).join('\n')));
   } else {
-    text = last.body;
+    const tm = r.timing, total = Math.max(tm.total, 0.001);
+    card.append(h('div', { id: 'timingBars' },
+      ['dns', 'connect', 'tls', 'ttfb', 'download'].map(k =>
+        h('div', {}, `${k.padEnd(8)} `, h('b', {}, tm[k].toFixed(1) + 'ms'),
+          h('span', { class: 'bar', style: `width:${Math.max(2, 220 * tm[k] / total)}px` })))));
   }
-  $('respBody').textContent = text;
-  const t = last.timing, total = Math.max(t.total, 0.001);
-  $('timing').innerHTML = ['dns', 'connect', 'tls', 'ttfb', 'download']
-    .map(k => `${k} <b>${t[k].toFixed(1)}ms</b> <span class="bar" style="width:${Math.max(2, 60 * t[k] / total)}px"></span>`)
-    .join(' &nbsp; ');
+  if (r.assertions && r.assertions.length) {
+    card.append(h('div', { id: 'assertChips' }, r.assertions.map(a =>
+      h('span', { class: 'chip ' + (a.passed ? 'ok' : 'bad'), title: a.message }, (a.passed ? '✓ ' : '✕ ') + a.type + ': ' + a.message))));
+  }
 }
-function esc(s) { return s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function prettyJSON(text) {
+  try {
+    const pretty = JSON.stringify(JSON.parse(text), null, 2);
+    const out = [];
+    const re = /("(?:[^"\\]|\\.)*")(\s*:)?|(-?\d+\.?\d*(?:[eE][+-]?\d+)?)/g;
+    let i = 0, m;
+    while ((m = re.exec(pretty))) {
+      if (m.index > i) out.push(pretty.slice(i, m.index));
+      if (m[1] && m[2]) { out.push(h('span', { class: 'json-k' }, m[1]), m[2]); }
+      else if (m[1]) out.push(h('span', { class: 'json-s' }, m[1]));
+      else out.push(h('span', { class: 'json-n' }, m[3]));
+      i = re.lastIndex;
+    }
+    out.push(pretty.slice(i));
+    return out;
+  } catch { return [text]; }
+}
+
+async function saveRequest() {
+  if (!S.req) return;
+  try {
+    await api('/api/requests/' + S.req.id, { method: 'PUT', body: S.req });
+    const meta = findReqMeta(S.req.id);
+    if (meta) { meta.meta.name = S.req.spec.name; meta.meta.method = S.req.spec.method; meta.meta.url = S.req.spec.url; }
+    renderSide();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function send() {
+  if (!S.req) return;
+  $('sendBtn').disabled = true;
+  try {
+    await saveRequest();
+    S.last = await api('/api/send', { method: 'POST', body: { requestId: S.req.id, env: S.envName } });
+    renderResponse(); loadStats(S.req.id); loadHistory();
+  } catch (e) { toast(e.message, true); }
+  finally { $('sendBtn').disabled = false; }
+}
+
+async function loadStats(id) {
+  try {
+    const st = await api(`/api/requests/${id}/stats`);
+    S.stats = st; renderMeta();
+  } catch { /* metrics are best-effort */ }
+}
+function renderMeta() {
+  const m = $('meta'); m.hidden = false; m.innerHTML = '';
+  m.append(h('h3', {}, 'Request Metadata'));
+  const st = S.stats || { count: 0, avgMs: 0, successRate: 0 };
+  m.append(h('div', { class: 'metaCard' }, h('span', { class: 'lbl' }, 'Performance metrics'),
+    h('span', { class: 'metric' }, h('b', {}, st.count ? st.avgMs.toFixed(0) + 'ms' : '—'), h('span', {}, 'Avg. latency')),
+    h('span', { class: 'metric' }, h('b', {}, st.count ? (st.successRate * 100).toFixed(1) + '%' : '—'), h('span', {}, 'Success rate')),
+    h('div', { style: 'color:var(--faint);font-size:10px;margin-top:6px' }, `${st.count} recorded sends`)));
+  if (S.req) {
+    const meta = findReqMeta(S.req.id);
+    m.append(h('div', { class: 'metaCard' }, h('span', { class: 'lbl' }, 'Location'),
+      h('div', {}, '🗀 ' + (meta ? meta.col.name : '')),
+      h('div', { style: 'color:var(--dim)' }, S.req.folderId ? ('└ ' + (meta.col.folders.find(f => f.id === S.req.folderId)?.name || '')) : '└ collection root')));
+  }
+  m.append(h('div', { class: 'metaCard' }, h('span', { class: 'lbl' }, 'Storage'),
+    h('div', { style: 'color:var(--dim)' }, 'SQLite · local-first · no cloud')));
+}
+
+/* ---------- runner view ---------- */
+async function runCollection(col) {
+  $('crumb').innerHTML = '';
+  $('crumb').append('Collections / ', h('b', {}, col.name), ' / Run');
+  const work = $('work'); $('meta').hidden = true;
+  work.innerHTML = '<div class="empty">Running collection…</div>';
+  let out;
+  try {
+    out = await api('/api/run', { method: 'POST', body: { collectionId: col.id, env: S.envName } });
+  } catch (e) { work.innerHTML = ''; work.append(h('div', { class: 'empty' }, e.message)); return; }
+  work.innerHTML = '';
+  S.run = out;
+  const failed = out.failed > 0;
+  work.append(h('div', { style: 'display:flex;align-items:center;gap:12px' },
+    h('h2', { style: 'margin:0;font-family:var(--mono)' }, col.name),
+    h('span', { class: 'badge ' + (failed ? 'fail' : 'pass') }, failed ? 'FAILED' : 'PASSED'),
+    h('span', { style: 'margin-left:auto;color:var(--dim)' }, 'Run completed · ' + new Date(out.finishedAt).toLocaleString())));
+  work.append(h('div', { class: 'card sumRow', style: 'display:flex;padding:8px' },
+    sumCard('Tests executed', out.executed, ''),
+    sumCard('Passed', out.passed, 'green'),
+    sumCard('Failed', out.failed, 'red'),
+    sumCard('P95 latency', out.p95Ms.toFixed(0) + 'ms', '')));
+  const list = h('div', { class: 'card' },
+    h('div', { style: 'padding:10px 14px;border-bottom:1px solid var(--line)' },
+      h('span', { class: 'lbl', style: 'font-size:10px;letter-spacing:.1em;color:var(--dim);font-weight:700' }, 'TEST RESULTS DETAIL')));
+  for (const r of out.results) {
+    list.append(h('div', { class: 'runRow' },
+      h('span', { class: 'ic ' + (r.passed ? 'ok' : 'bad') }, r.passed ? '✓' : '✕'),
+      h('span', { class: 'method m-' + r.method }, r.method),
+      h('b', {}, r.name),
+      h('span', { style: 'color:var(--dim);font-family:var(--mono);font-size:11.5px' },
+        r.error ? 'error' : `${r.status} · ${r.durationMs.toFixed(0)}ms`)));
+    if (r.error) list.append(h('div', { class: 'runErr' }, r.error));
+    for (const a of r.assertions || []) if (!a.passed)
+      list.append(h('div', { class: 'runErr' }, `AssertionError (${a.type}): ${a.message}`));
+  }
+  list.append(h('div', { class: 'xrayCard' },
+    h('b', { style: 'color:var(--fg)' }, 'Push to Xray'),
+    h('span', {}, `Sync these ${out.executed} test results to a Jira Xray execution.`),
+    h('button', { class: 'btn dark', style: 'margin-left:auto', disabled: '' }, 'Push execution'),
+    h('span', { class: 'tag', style: 'font-size:9px;border:1px solid var(--line2);border-radius:99px;padding:0 6px' }, 'phase 3')));
+  work.append(list);
+}
+function sumCard(label, value, cls) {
+  return h('div', { class: 'sumCard ' + cls }, h('div', { class: 'lbl' }, label), h('b', {}, String(value)));
+}
+
+/* ---------- history view ---------- */
+async function loadHistory() {
+  try { S.history = await api('/api/history?limit=100'); } catch { S.history = []; }
+  if (S.view === 'history') renderSide();
+}
+function renderHistoryView() {
+  loadHistory().then(() => {
+    $('crumb').innerHTML = ''; $('crumb').append('Workspace / ', h('b', {}, 'History'));
+    const work = $('work'); $('meta').hidden = true; work.innerHTML = '';
+    work.append(h('div', { class: 'empty' }, S.history.length ? 'Select a send from the list to inspect its stored response.' : 'No requests sent yet.'));
+  });
+}
+async function showHistory(id) {
+  try {
+    const { entry, body } = await api('/api/history/' + id);
+    const work = $('work'); $('meta').hidden = true; work.innerHTML = '';
+    $('crumb').innerHTML = ''; $('crumb').append('History / ', h('b', {}, entry.requestName));
+    const ok = entry.status >= 200 && entry.status < 400;
+    work.append(h('div', { class: 'card' },
+      h('div', { id: 'respMeta' },
+        h('span', { class: 'method m-' + entry.method }, entry.method),
+        h('span', { style: 'font-family:var(--mono)' }, entry.url),
+        h('span', { class: 'pill ' + (ok ? 'ok' : 'bad') }, h('span', { class: 'dot' }), entry.status),
+        h('span', {}, entry.durationMs.toFixed(0) + 'ms'),
+        h('span', { style: 'color:var(--dim)' }, new Date(entry.sentAt).toLocaleString())),
+      h('pre', { id: 'respBody' }, ...prettyJSON(body))));
+    if (entry.requestId) work.append(h('button', { class: 'btn', onclick: () => { S.view = 'collections'; document.querySelector('[data-view=collections]').click(); openRequest(entry.requestId); } }, 'Open request'));
+  } catch (e) { toast(e.message, true); }
+}
+
+/* ---------- environments view ---------- */
+function renderEnvView(name) {
+  S.envEdit = name;
+  renderSide();
+  $('crumb').innerHTML = ''; $('crumb').append('Workspace / ', h('b', {}, 'Environments'));
+  const work = $('work'); $('meta').hidden = true; work.innerHTML = '';
+  const env = S.state.environments.find(e => e.name === name);
+  if (!env) { work.append(h('div', { class: 'empty' }, 'Select an environment, or create one with +.')); return; }
+  const card = h('div', { class: 'card', style: 'padding:16px' });
+  card.append(h('h2', { style: 'margin:0 0 4px;font-family:var(--mono)' }, env.name));
+  card.append(h('div', { style: 'color:var(--dim);margin-bottom:14px' }, 'Variables resolve at send time; secrets are read from RELAY_SECRET_* and never stored.'));
+  card.append(h('div', { class: 'lbl', style: 'font-size:10px;letter-spacing:.1em;color:var(--dim);font-weight:700;margin-bottom:6px' }, 'VARIABLES'));
+  card.append(kvTable(env.vars, { onchange: (v) => { env.vars = v; saveEnv(env); } }));
+  card.append(h('div', { class: 'lbl', style: 'font-size:10px;letter-spacing:.1em;color:var(--dim);font-weight:700;margin:16px 0 6px' }, 'SECRETS'));
+  const secWrap = h('div', { class: 'chips' });
+  const renderSecrets = () => {
+    secWrap.innerHTML = '';
+    for (const s of env.secrets || []) {
+      secWrap.append(h('span', { class: 'att on' }, '🔒 ' + s + ' ',
+        h('small', { style: 'color:var(--dim)' }, '(RELAY_SECRET_' + s.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase() + ')'),
+        h('button', { class: 'delRow', onclick: () => { env.secrets = env.secrets.filter(x => x !== s); saveEnv(env); renderSecrets(); } }, ' ✕')));
+    }
+    secWrap.append(h('button', { class: 'att', onclick: () => {
+      const n = prompt('Secret variable name (e.g. apiToken)'); if (!n) return;
+      env.secrets = [...(env.secrets || []), n]; saveEnv(env); renderSecrets();
+    } }, '+ Add secret'));
+  };
+  renderSecrets();
+  card.append(secWrap);
+  card.append(h('div', { style: 'margin-top:18px' },
+    h('button', { class: 'btn', onclick: async () => {
+      if (!confirm('Delete environment ' + env.name + '?')) return;
+      await api('/api/environments/' + encodeURIComponent(env.name), { method: 'DELETE' });
+      await refresh(); renderEnvView();
+    } }, 'Delete environment')));
+  work.append(card);
+}
+const saveEnv = debounce(async (env) => {
+  try { await api('/api/environments/' + encodeURIComponent(env.name), { method: 'PUT', body: env }); }
+  catch (e) { toast(e.message, true); }
+}, 400);
+
+/* ---------- presets view ---------- */
+function renderPresetView(id) {
+  S.presetId = id ?? S.presetId;
+  renderSide();
+  $('crumb').innerHTML = ''; $('crumb').append('Workspace / ', h('b', {}, 'Header Presets'));
+  const work = $('work'); $('meta').hidden = true; work.innerHTML = '';
+  const p = S.state.presets.find(x => x.id === S.presetId);
+  if (!p) { work.append(h('div', { class: 'empty' }, 'Select a preset, or create one with +.')); return; }
+
+  const card = h('div', { class: 'card', style: 'padding:16px' });
+  const save = debounce(async () => {
+    try { await api('/api/presets/' + p.id, { method: 'PUT', body: p }); await refresh(); }
+    catch (e) { toast(e.message, true); }
+  }, 400);
+
+  card.append(h('div', { style: 'display:flex;gap:10px;align-items:center;margin-bottom:4px' },
+    h('h2', { style: 'margin:0;font-family:var(--mono)' }, p.name),
+    h('button', { class: 'btn', style: 'margin-left:auto', onclick: async () => {
+      if (!confirm('Delete preset ' + p.name + '?')) return;
+      await api('/api/presets/' + p.id, { method: 'DELETE' }); S.presetId = null; await refresh(); renderPresetView();
+    } }, 'Delete'),
+    h('button', { class: 'btn dark', onclick: () => save() }, 'Save changes')));
+  card.append(h('input', { type: 'text', value: p.description || '', placeholder: 'Description…',
+    style: 'width:100%;margin-bottom:14px', onchange: (e) => { p.description = e.target.value; save(); } }));
+
+  card.append(h('div', { class: 'lbl', style: 'font-size:10px;letter-spacing:.1em;color:var(--dim);font-weight:700;margin-bottom:6px' }, 'CONFIGURED HEADERS'));
+  const table = h('table', { class: 'kv' },
+    h('tr', {}, h('th', { style: 'width:30%' }, 'Key'), h('th', {}, 'Value'), h('th', { style: 'width:54px' }, 'Secret'), h('th', { style: 'width:30px' }, '')));
+  const sync = () => {
+    p.headers = [];
+    for (const tr of table.querySelectorAll('tr[data-row]')) {
+      const [k, v] = tr.querySelectorAll('input[type=text], input[type=password]');
+      const lock = tr.querySelector('.secLock');
+      if (k.value.trim()) p.headers.push({ key: k.value.trim(), value: v.value, secret: lock.classList.contains('on') });
+    }
+    save();
+  };
+  const addRow = (hd = { key: '', value: '', secret: false }) => {
+    const lock = h('button', { class: 'secLock' + (hd.secret ? ' on' : ''), title: 'Mark secret',
+      onclick: (e) => { e.preventDefault(); lock.classList.toggle('on'); sync(); } }, '🔒');
+    table.append(h('tr', { 'data-row': 1 },
+      h('td', {}, h('input', { type: 'text', value: hd.key, placeholder: 'Authorization', onchange: sync })),
+      h('td', {}, h('input', { type: hd.secret ? 'password' : 'text', value: hd.value,
+        placeholder: hd.secret ? '(unchanged)' : 'Bearer {{token}}', onchange: sync })),
+      h('td', { style: 'text-align:center' }, lock),
+      h('td', {}, h('button', { class: 'delRow', onclick: (e) => { e.target.closest('tr').remove(); sync(); } }, '✕'))));
+  };
+  (p.headers || []).forEach(addRow);
+  card.append(table, h('button', { class: 'addRow', onclick: () => addRow() }, '+ Add additional header'));
+
+  card.append(h('div', { class: 'lbl', style: 'font-size:10px;letter-spacing:.1em;color:var(--dim);font-weight:700;margin:18px 0 6px' }, 'ATTACHED TO'));
+  const chips = h('div', { class: 'chips' });
+  const isAttached = (test) => (p.attachments || []).some(test);
+  for (const c of S.state.collections || []) {
+    const on = isAttached(a => a.collectionId === c.id);
+    chips.append(h('button', { class: 'att' + (on ? ' on' : ''), onclick: () => {
+      p.attachments = on ? p.attachments.filter(a => a.collectionId !== c.id)
+        : [...(p.attachments || []), { collectionId: c.id }];
+      save(); renderPresetView();
+    } }, '🗀 ' + c.name));
+    for (const f of c.folders) {
+      const fOn = isAttached(a => a.folderId === f.id);
+      chips.append(h('button', { class: 'att' + (fOn ? ' on' : ''), onclick: () => {
+        p.attachments = fOn ? p.attachments.filter(a => a.folderId !== f.id)
+          : [...(p.attachments || []), { folderId: f.id }];
+        save(); renderPresetView();
+      } }, '🗀 ' + c.name + ' / ' + f.name));
+    }
+  }
+  card.append(chips);
+  card.append(h('div', { class: 'note', style: 'margin-top:14px' },
+    'Presets applied at the folder level are inherited by all requests within that folder unless overridden. Secret values are stored locally and never shown or exported.'));
+  work.append(card);
+}
+
+/* ---------- helpers ---------- */
+function debounce(fn, ms) {
+  let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+}
 function fmtSize(n) { return n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(1) + ' MB'; }
 
-$('save').onclick = save;
-$('send').onclick = send;
-for (const id of ['tabPretty', 'tabRaw', 'tabHeaders']) {
-  $(id).onclick = () => {
-    tab = id.slice(3).toLowerCase();
-    document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.id === id));
-    render();
-  };
-}
 document.addEventListener('keydown', (e) => {
-  if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); save(); }
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); send(); }
 });
-loadWorkspace().catch(e => msg(e.message, true));
+
+refresh().then(() => {
+  if (S.state.collections[0]) {
+    S.openCols.add(S.state.collections[0].id);
+    renderSide();
+    const first = S.state.collections[0].requests[0];
+    if (first) openRequest(first.id);
+  }
+  loadHistory();
+}).catch(e => toast(e.message, true));
 </script>
 </body>
 </html>
