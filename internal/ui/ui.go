@@ -75,6 +75,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/history", s.handleHistoryList)
 	mux.HandleFunc("GET /api/history/{id}", s.handleHistoryGet)
 
+	mux.HandleFunc("GET /api/settings", s.handleSettingsGet)
+	mux.HandleFunc("PUT /api/settings", s.handleSettingsPut)
+
 	mux.HandleFunc("POST /api/import/postman", s.handleImportPostman)
 	mux.HandleFunc("POST /api/import/curl", s.handleImportCurl)
 	mux.HandleFunc("GET /api/export", s.handleExport)
@@ -98,6 +101,42 @@ func (s *Server) ListenAndServe(ctx context.Context, port int) error {
 		return err
 	}
 	return nil
+}
+
+func (s *Server) handleSettingsGet(w http.ResponseWriter, r *http.Request) {
+	set, err := s.DB.Settings()
+	if err != nil {
+		httpError(w, 500, err)
+		return
+	}
+	writeJSON(w, set)
+}
+
+func (s *Server) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
+	var set store.Settings
+	if err := json.NewDecoder(r.Body).Decode(&set); err != nil {
+		httpError(w, 400, err)
+		return
+	}
+	if err := s.DB.SaveSettings(set); err != nil {
+		httpError(w, 422, err)
+		return
+	}
+	writeJSON(w, set)
+}
+
+// engineOptions applies the stored workspace settings on top of the
+// server's defaults for each send.
+func (s *Server) engineOptions() engine.Options {
+	opts := s.Engine
+	set, err := s.DB.Settings()
+	if err != nil {
+		return opts
+	}
+	opts.Timeout = time.Duration(set.TimeoutSeconds) * time.Second
+	opts.FollowRedirects = set.FollowRedirects
+	opts.Insecure = set.Insecure
+	return opts
 }
 
 func (s *Server) getenv() func(string) string {
@@ -259,7 +298,7 @@ func (s *Server) execute(ctx context.Context, req *store.Request, envName string
 	if err != nil {
 		return nil, 422, err
 	}
-	result, err := engine.Send(ctx, resolved, s.Engine)
+	result, err := engine.Send(ctx, resolved, s.engineOptions())
 	if err != nil {
 		return nil, 502, err
 	}

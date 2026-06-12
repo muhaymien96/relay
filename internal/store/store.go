@@ -506,3 +506,45 @@ func (s *Store) RequestStats(requestID int64) (*RequestStats, error) {
 	}
 	return &st, nil
 }
+
+// Settings are workspace-level engine preferences, stored as a single JSON
+// row so the schema never needs migrating for new knobs.
+type Settings struct {
+	TimeoutSeconds  int  `json:"timeoutSeconds"`
+	FollowRedirects bool `json:"followRedirects"`
+	Insecure        bool `json:"insecure"` // skip TLS verification (self-signed SIT/UAT)
+}
+
+// DefaultSettings mirror engine.NewOptions.
+func DefaultSettings() Settings {
+	return Settings{TimeoutSeconds: 30, FollowRedirects: true, Insecure: false}
+}
+
+func (s *Store) Settings() (Settings, error) {
+	if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY CHECK (id = 1), data TEXT NOT NULL)`); err != nil {
+		return DefaultSettings(), err
+	}
+	var data string
+	err := s.db.QueryRow(`SELECT data FROM settings WHERE id = 1`).Scan(&data)
+	if err != nil {
+		return DefaultSettings(), nil // no row yet
+	}
+	out := DefaultSettings()
+	_ = json.Unmarshal([]byte(data), &out)
+	if out.TimeoutSeconds <= 0 {
+		out.TimeoutSeconds = 30
+	}
+	return out, nil
+}
+
+func (s *Store) SaveSettings(set Settings) error {
+	if set.TimeoutSeconds <= 0 || set.TimeoutSeconds > 600 {
+		return fmt.Errorf("timeout must be 1-600 seconds")
+	}
+	if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY CHECK (id = 1), data TEXT NOT NULL)`); err != nil {
+		return err
+	}
+	_, err := s.db.Exec(`INSERT INTO settings (id, data) VALUES (1, ?)
+		ON CONFLICT(id) DO UPDATE SET data = excluded.data`, j(set))
+	return err
+}

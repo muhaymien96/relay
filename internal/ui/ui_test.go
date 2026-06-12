@@ -374,3 +374,43 @@ func TestMoveRequestToFolder(t *testing.T) {
 		t.Errorf("folder patch: %d", rec.Code)
 	}
 }
+
+func TestSettingsControlTLSAndTimeout(t *testing.T) {
+	s, _ := newServer(t)
+
+	// Defaults come back without any row existing.
+	rec, doc := call(t, s, "GET", "/api/settings", "")
+	if rec.Code != 200 || doc["timeoutSeconds"].(float64) != 30 || doc["followRedirects"] != true {
+		t.Fatalf("defaults: %d %v", rec.Code, doc)
+	}
+	// Validation rejects nonsense.
+	rec, _ = call(t, s, "PUT", "/api/settings", `{"timeoutSeconds":0,"followRedirects":true,"insecure":false}`)
+	if rec.Code != 422 {
+		t.Errorf("invalid timeout accepted: %d", rec.Code)
+	}
+
+	// A self-signed TLS upstream fails with default settings...
+	tls := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer tls.Close()
+	req := &store.Request{CollectionID: 1, Spec: &dsl.Request{Name: "TLS", Method: "GET", URL: tls.URL}}
+	if err := s.DB.CreateRequest(req); err != nil {
+		t.Fatal(err)
+	}
+	rec, _ = call(t, s, "POST", "/api/send", `{"requestId":`+itoa(req.ID)+`}`)
+	if rec.Code != 502 {
+		t.Fatalf("self-signed should fail with verification on, got %d", rec.Code)
+	}
+
+	// ...and succeeds after enabling the insecure setting.
+	rec, _ = call(t, s, "PUT", "/api/settings", `{"timeoutSeconds":15,"followRedirects":true,"insecure":true}`)
+	if rec.Code != 200 {
+		t.Fatalf("settings put: %d", rec.Code)
+	}
+	rec, doc = call(t, s, "POST", "/api/send", `{"requestId":`+itoa(req.ID)+`}`)
+	if rec.Code != 200 || doc["status"].(float64) != 200 {
+		t.Errorf("send with insecure=true: %d %v", rec.Code, doc)
+	}
+}

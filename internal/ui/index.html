@@ -226,7 +226,7 @@
     <button class="navItem" disabled>▣ Mock Servers <span class="tag">v2</span></button>
     <button class="navItem" disabled>◉ Monitor <span class="tag">v2</span></button>
     <div id="railSpace"></div>
-    <button class="navItem" disabled>⚙ Settings</button>
+    <button class="navItem" data-view="settings">⚙ Settings</button>
   </nav>
   <aside id="side">
     <div id="sideHead"><h2 id="sideTitle">COLLECTIONS</h2><button id="sideAdd" title="add">+</button></div>
@@ -310,14 +310,15 @@ document.querySelectorAll('.navItem[data-view]').forEach(b => b.onclick = () => 
   if (S.view === 'history') renderHistoryView();
   if (S.view === 'environments') renderEnvView();
   if (S.view === 'presets') renderPresetView();
+  if (S.view === 'settings') renderSettingsView();
   if (S.view === 'collections' && S.reqId) openRequest(S.reqId);
 });
 
 function renderSide() {
   const list = $('sideList'); list.innerHTML = '';
-  const titles = { collections: 'COLLECTIONS', history: 'HISTORY', environments: 'ENVIRONMENTS', presets: 'HEADER PRESETS' };
+  const titles = { collections: 'COLLECTIONS', history: 'HISTORY', environments: 'ENVIRONMENTS', presets: 'HEADER PRESETS', settings: 'SETTINGS' };
   $('sideTitle').textContent = titles[S.view];
-  $('sideAdd').style.visibility = S.view === 'history' ? 'hidden' : 'visible';
+  $('sideAdd').style.visibility = (S.view === 'history' || S.view === 'settings') ? 'hidden' : 'visible';
 
   if (S.view === 'collections') {
     for (const c of S.state.collections || []) {
@@ -783,6 +784,29 @@ function renderMeta() {
   }
   m.append(h('div', { class: 'metaCard' }, h('span', { class: 'lbl' }, 'Storage'),
     h('div', { style: 'color:var(--dim)' }, 'SQLite · local-first · no cloud')));
+}
+
+/* ---------- workspace settings ---------- */
+async function renderSettingsView() {
+  let set;
+  try { set = await api('/api/settings'); } catch (e) { toast(e.message, true); return; }
+  const card = settingsCard('Workspace settings', 'Applied to every send from this workspace; stored in relay.db.');
+  const save = debounce(async () => {
+    try { await api('/api/settings', { method: 'PUT', body: set }); toast('settings saved'); }
+    catch (e) { toast(e.message, true); }
+  }, 400);
+  card.append(h('div', { class: 'formRow' }, h('label', {}, 'Request timeout'),
+    h('input', { type: 'text', value: set.timeoutSeconds, style: 'max-width:90px',
+      onchange: (e) => { set.timeoutSeconds = parseInt(e.target.value, 10) || 30; save(); } }),
+    h('span', { style: 'color:var(--dim)' }, 'seconds (1–600)')));
+  const check = (label, key, hint) => h('div', { class: 'formRow' }, h('label', {}, label),
+    h('input', { type: 'checkbox', style: 'width:auto', checked: set[key] ? '' : undefined,
+      onchange: (e) => { set[key] = e.target.checked; save(); } }),
+    h('span', { style: 'color:var(--dim)' }, hint));
+  card.append(check('Follow redirects', 'followRedirects', '3xx responses are followed automatically'));
+  card.append(check('Skip TLS verification', 'insecure', 'for SIT/UAT environments with internal or self-signed certificates — leave off for production'));
+  card.append(h('div', { class: 'note', style: 'margin-top:14px' },
+    'Secrets are never stored here: environment secrets come from RELAY_SECRET_* process variables.'));
 }
 
 /* ---------- collection & folder settings ---------- */
