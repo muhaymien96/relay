@@ -139,6 +139,22 @@
   .pill.bad { color: var(--red); } .pill.ok { color: var(--green); }
   #respBody { margin: 0; padding: 12px 14px; font-family: var(--mono); font-size: 12.5px;
               white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow: auto; }
+  .hdrWrap { max-height: 340px; overflow: auto; }
+  .hdrTitle { display: flex; align-items: center; gap: 8px; padding: 10px 14px 4px; font-size: 10px;
+              letter-spacing: .08em; color: var(--dim); font-weight: 700; text-transform: uppercase; }
+  .hdrTitle .n { background: var(--ink-soft); color: var(--ink); border-radius: 99px; padding: 0 7px;
+                 font-size: 10px; letter-spacing: 0; }
+  table.hdr { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12px; }
+  table.hdr td { padding: 6px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.hdr tr:last-child td { border-bottom: 0; }
+  table.hdr td.k { color: var(--ink); font-weight: 600; width: 28%; white-space: nowrap; }
+  table.hdr td.v { word-break: break-all; color: var(--fg); }
+  table.hdr td.o { width: 90px; text-align: right; }
+  table.hdr tr:hover td { background: #fafbfe; }
+  .iconBtn { border: 1px solid var(--line2); background: #fff; border-radius: 7px; padding: 3px 10px;
+             color: var(--dim); font-size: 11.5px; font-weight: 600; font-family: "Inter", system-ui, sans-serif; }
+  .iconBtn:hover { color: var(--ink); border-color: var(--ink); }
+  #respMeta .actions { margin-left: auto; display: flex; gap: 6px; }
   .json-k { color: var(--ink); } .json-s { color: #0d7a52; } .json-n { color: #b45309; }
   #assertChips { padding: 8px 14px 12px; display: flex; gap: 8px; flex-wrap: wrap; }
   .chip { font-size: 11px; border-radius: 99px; padding: 2px 10px; font-weight: 600; }
@@ -308,7 +324,16 @@ function renderSide() {
       const open = S.openCols.has(c.id);
       list.append(h('div', { class: 'colRow', onclick: () => { open ? S.openCols.delete(c.id) : S.openCols.add(c.id); renderSide(); } },
         h('span', { class: 'car' }, open ? '▾' : '▸'), '🗀 ', c.name,
-        h('button', { class: 'runBtn', title: 'Run collection', onclick: (e) => { e.stopPropagation(); runCollection(c); } }, '▶')));
+        h('button', { class: 'runBtn', title: 'Run collection', onclick: (e) => { e.stopPropagation(); runCollection(c); } }, '▶'),
+        h('button', { class: 'runBtn', title: 'Delete collection', onclick: async (e) => {
+          e.stopPropagation();
+          if (!confirm(`Delete collection "${c.name}" and all its requests?`)) return;
+          try {
+            await api('/api/collections/' + c.id, { method: 'DELETE' });
+            if (S.reqId && findReqMeta(S.reqId)?.col.id === c.id) { S.reqId = null; S.req = null; $('work').innerHTML = '<div class="empty">Select a request, or create one.</div>'; $('meta').hidden = true; }
+            await refresh();
+          } catch (err) { toast(err.message, true); }
+        } }, '✕')));
       if (!open) continue;
       const byFolder = (fid) => c.requests.filter(q => String(q.folderId) === String(fid));
       for (const q of byFolder(null)) list.append(reqRow(q));
@@ -362,7 +387,8 @@ $('sideAdd').onclick = async () => {
 
 $('newReq').onclick = async () => {
   try {
-    let col = S.state.collections[0];
+    const current = S.reqId && findReqMeta(S.reqId);
+    let col = current ? current.col : S.state.collections[0];
     if (!col) {
       await api('/api/collections', { method: 'POST', body: { name: 'My Collection', headers: {}, vars: {} } });
       await refresh(); col = S.state.collections[0];
@@ -478,8 +504,9 @@ function renderRequest() {
   const save = debounce(saveRequest, 500);
 
   const editor = h('div', { class: 'card' },
-    h('div', { style: 'padding:12px 12px 0' },
-      h('input', { id: 'reqName', value: spec.name, onchange: (e) => { spec.name = e.target.value; save(); } })),
+    h('div', { style: 'padding:12px 12px 0;display:flex;align-items:center;gap:8px' },
+      h('input', { id: 'reqName', value: spec.name, onchange: (e) => { spec.name = e.target.value; save(); } }),
+      h('button', { class: 'iconBtn', title: 'Delete request', onclick: deleteRequest }, '🗑')),
     h('div', { id: 'urlRow' },
       h('select', { id: 'method', onchange: (e) => { spec.method = e.target.value; save(); } },
         METHODS.map(m => h('option', { value: m, selected: spec.method === m ? '' : undefined }, m))),
@@ -587,19 +614,24 @@ function renderResponse(card) {
   metaBar.append(
     h('span', { class: 'pill ' + (ok ? 'ok' : 'bad') }, h('span', { class: 'dot' }), `${r.status} ${esc(r.statusText).replace(/^\d+ /, '')}`),
     h('span', {}, `Time: ${r.timing.total.toFixed(0)}ms`),
-    h('span', {}, `Size: ${fmtSize(r.size)}${r.truncated ? ' (view truncated)' : ''}`));
+    h('span', {}, `Size: ${fmtSize(r.size)}${r.truncated ? ' (view truncated)' : ''}`),
+    h('span', { class: 'actions' },
+      h('button', { class: 'iconBtn', title: 'Copy response body', onclick: () => copyText(r.body, 'Body') }, '⧉ Body'),
+      h('button', { class: 'iconBtn', title: 'Copy as curl (secrets become $RELAY_SECRET_* references)', onclick: copyCurl }, '⧉ curl')));
+  const nHdr = Object.keys(r.headers).length;
   const tabs = h('div', { class: 'tabs' }, ['body', 'headers', 'timing'].map(t =>
     h('button', { class: (S.respTab || 'body') === t ? 'on' : '', onclick: () => { S.respTab = t; renderResponse(); } },
-      t[0].toUpperCase() + t.slice(1))));
+      t[0].toUpperCase() + t.slice(1),
+      t === 'headers' && nHdr ? h('span', { class: 'n' }, nHdr) : '')));
   card.append(metaBar, tabs);
   const t = S.respTab || 'body';
   if (t === 'body') {
     card.append(h('pre', { id: 'respBody' }, ...prettyJSON(r.body)));
   } else if (t === 'headers') {
-    card.append(h('pre', { id: 'respBody' },
-      Object.entries(r.headers).map(([k, v]) => `${k}: ${v}`).join('\n') +
-      '\n\n--- request headers (as sent) ---\n' +
-      Object.entries(r.requestHeaders).map(([k, v]) => `${k}: ${v}${r.headerOrigin[k] && r.headerOrigin[k] !== 'request' ? '   [' + r.headerOrigin[k] + ']' : ''}`).join('\n')));
+    card.append(h('div', { class: 'hdrWrap' },
+      headerSection('Response headers', r.headers, null, nHdr),
+      headerSection('Request headers · as sent', r.requestHeaders, r.headerOrigin,
+        Object.keys(r.requestHeaders).length)));
   } else {
     const tm = r.timing, total = Math.max(tm.total, 0.001);
     card.append(h('div', { id: 'timingBars' },
@@ -611,6 +643,40 @@ function renderResponse(card) {
     card.append(h('div', { id: 'assertChips' }, r.assertions.map(a =>
       h('span', { class: 'chip ' + (a.passed ? 'ok' : 'bad'), title: a.message }, (a.passed ? '✓ ' : '✕ ') + a.type + ': ' + a.message))));
   }
+}
+
+// headerSection renders one titled header table. origins (when given) adds
+// a provenance badge per row: preset / collection / folder / auth.
+function headerSection(title, headers, origins, count) {
+  const names = Object.keys(headers).sort();
+  const wrap = h('div', {},
+    h('div', { class: 'hdrTitle' }, title, count ? h('span', { class: 'n' }, count) : ''));
+  if (!names.length) {
+    wrap.append(h('div', { style: 'padding:4px 14px 10px;color:var(--faint)' }, 'none'));
+    return wrap;
+  }
+  const table = h('table', { class: 'hdr' });
+  for (const k of names) {
+    const tr = h('tr', { title: 'Click to copy', style: 'cursor:copy',
+      onclick: () => copyText(k + ': ' + headers[k], k) },
+      h('td', { class: 'k' }, k),
+      h('td', { class: 'v' }, esc(headers[k])));
+    if (origins) {
+      const o = origins[k];
+      tr.append(h('td', { class: 'o' }, o && o !== 'request' ? h('span', { class: 'origin' }, o) : ''));
+    }
+    table.append(tr);
+  }
+  wrap.append(table);
+  return wrap;
+}
+
+async function copyCurl() {
+  if (!S.req) return;
+  try {
+    const out = await api(`/api/requests/${S.req.id}/curl?env=${encodeURIComponent(S.envName)}`);
+    await copyText(out.curl, 'curl command');
+  } catch (e) { toast(e.message, true); }
 }
 
 function prettyJSON(text) {
@@ -638,6 +704,19 @@ async function saveRequest() {
     const meta = findReqMeta(S.req.id);
     if (meta) { meta.meta.name = S.req.spec.name; meta.meta.method = S.req.spec.method; meta.meta.url = S.req.spec.url; }
     renderSide();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function deleteRequest() {
+  if (!S.req) return;
+  if (!confirm(`Delete request "${S.req.spec.name}"?`)) return;
+  try {
+    await api('/api/requests/' + S.req.id, { method: 'DELETE' });
+    S.reqId = null; S.req = null; S.last = null;
+    await refresh();
+    $('work').innerHTML = '<div class="empty">Select a request, or create one.</div>';
+    $('meta').hidden = true;
+    $('crumb').textContent = 'Workspace';
   } catch (e) { toast(e.message, true); }
 }
 
@@ -873,6 +952,15 @@ function renderPresetView(id) {
 /* ---------- helpers ---------- */
 function debounce(fn, ms) {
   let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+}
+async function copyText(text, label) {
+  try { await navigator.clipboard.writeText(text); }
+  catch {
+    const ta = h('textarea', { style: 'position:fixed;opacity:0' }, text);
+    document.body.append(ta); ta.select();
+    document.execCommand('copy'); ta.remove();
+  }
+  toast(label + ' copied to clipboard');
 }
 function fmtSize(n) { return n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(1) + ' MB'; }
 

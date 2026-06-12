@@ -278,3 +278,26 @@ func itoa(i int64) string {
 	b, _ := json.Marshal(i)
 	return string(b)
 }
+
+func TestRequestCurl(t *testing.T) {
+	s, reqID := newServer(t)
+	rec, doc := call(t, s, "GET", "/api/requests/"+itoa(reqID)+"/curl?env=local", "")
+	if rec.Code != 200 {
+		t.Fatalf("curl: %d %v", rec.Code, doc)
+	}
+	cmd := doc["curl"].(string)
+	if !strings.HasPrefix(cmd, "curl") || !strings.Contains(cmd, "/echo") {
+		t.Errorf("curl = %s", cmd)
+	}
+	// Env secret becomes a shell reference; preset secret value is masked.
+	if strings.Contains(cmd, "hunter2") || !strings.Contains(cmd, "$RELAY_SECRET_APITOKEN") {
+		t.Errorf("env secret handling wrong: %s", cmd)
+	}
+	if strings.Contains(cmd, "topsecret") {
+		t.Errorf("preset secret leaked: %s", cmd)
+	}
+	// Inherited preset/collection headers present.
+	if !strings.Contains(cmd, "MOBILE_IOS") || !strings.Contains(cmd, "X-Team: qe") {
+		t.Errorf("inherited headers missing: %s", cmd)
+	}
+}

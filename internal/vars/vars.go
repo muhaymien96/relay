@@ -161,3 +161,14 @@ func (s *Scope) MaskSecrets(in string) string {
 	}
 	return in
 }
+
+// SecretValues returns a copy of the registered secret name → value pairs,
+// for callers that need to substitute references (e.g. curl export writing
+// $RELAY_SECRET_X instead of the value).
+func (s *Scope) SecretValues() map[string]string {
+	out := make(map[string]string, len(s.secrets))
+	for k, v := range s.secrets {
+		out[k] = v
+	}
+	return out
+}

@@ -58,6 +58,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/requests/{id}", s.handleRequestUpdate)
 	mux.HandleFunc("DELETE /api/requests/{id}", s.handleRequestDelete)
 	mux.HandleFunc("GET /api/requests/{id}/stats", s.handleRequestStats)
+	mux.HandleFunc("GET /api/requests/{id}/curl", s.handleRequestCurl)
 
 	mux.HandleFunc("GET /api/environments", s.handleEnvList)
 	mux.HandleFunc("PUT /api/environments/{name}", s.handleEnvPut)
@@ -168,6 +169,43 @@ func mask(s string, scope *vars.Scope, extraSecrets []string) string {
 		}
 	}
 	return s
+}
+
+// handleRequestCurl returns a copy-pasteable curl command for a request.
+// Environment secret values are replaced with $RELAY_SECRET_* shell
+// references and preset secret values are masked, so the command never
+// carries secret material.
+func (s *Server) handleRequestCurl(w http.ResponseWriter, r *http.Request) {
+	id, err := atoi64(r.PathValue("id"))
+	if err != nil {
+		httpError(w, 400, fmt.Errorf("bad id %q", r.PathValue("id")))
+		return
+	}
+	req, err := s.DB.Request(id)
+	if err != nil {
+		httpError(w, 404, fmt.Errorf("request %d not found", id))
+		return
+	}
+	resolved, scope, presetSecrets, err := s.resolveStored(req, r.URL.Query().Get("env"))
+	if err != nil {
+		httpError(w, 422, err)
+		return
+	}
+	cmd := porter.Curl(resolved)
+	for name, value := range scope.SecretValues() {
+		if value != "" {
+			// `'"$VAR"'` closes any surrounding single-quoted segment, lets
+			// the shell expand the variable, and reopens the quote — correct
+			// both inside and outside quoted arguments.
+			cmd = strings.ReplaceAll(cmd, value, `'"$`+vars.SecretEnvVar(name)+`"'`)
+		}
+	}
+	for _, value := range presetSecrets {
+		if value != "" {
+			cmd = strings.ReplaceAll(cmd, value, "••••••")
+		}
+	}
+	writeJSON(w, map[string]string{"curl": cmd})
 }
 
 type sendResult struct {
