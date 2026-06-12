@@ -10,8 +10,10 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -26,6 +28,8 @@ import (
 
 var version = "0.1.0-dev"
 
+var nonSlugRun = regexp.MustCompile(`[^a-z0-9]+`)
+
 const usage = `relay — lightweight, local-first API client
 
 Usage:
@@ -34,7 +38,9 @@ Usage:
                              [--data rows.csv|rows.json] [--delay 0ms] [--bail]
                              [--insecure] [--timeout 30s]
   relay import postman <collection.json> [--out DIR]
+  relay import curl '<command>'          [--out FILE]   (or pipe via stdin)
   relay export curl <file.req.toml> [--env NAME]
+  relay export postman <dir> [--out collection.json]
   relay export k6 <dir> [--env NAME] [--out script.js]
   relay export playwright <dir> [--env NAME] [--out api.spec.ts]
   relay ui [dir] [--db relay.db] [--port 7717]
@@ -280,8 +286,11 @@ func cmdRun(args []string) error {
 }
 
 func cmdImport(args []string) error {
+	if len(args) >= 1 && args[0] == "curl" {
+		return cmdImportCurl(args[1:])
+	}
 	if len(args) < 1 || args[0] != "postman" {
-		return fmt.Errorf("usage: relay import postman <collection.json> [--out DIR]")
+		return fmt.Errorf("usage: relay import postman|curl ...")
 	}
 	fs := flag.NewFlagSet("import postman", flag.ExitOnError)
 	out := fs.String("out", "", "output directory (default: collection name)")
@@ -317,9 +326,48 @@ func cmdImport(args []string) error {
 	return nil
 }
 
+// cmdImportCurl turns a pasted curl command (argument or stdin) into a
+// .req.toml file.
+func cmdImportCurl(args []string) error {
+	fs := flag.NewFlagSet("import curl", flag.ExitOnError)
+	out := fs.String("out", "", "output file (default derived from the URL path)")
+	pos, err := parseInterleaved(fs, args)
+	if err != nil {
+		return err
+	}
+	command := strings.TrimSpace(strings.Join(pos, " "))
+	if command == "" {
+		data, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			return err
+		}
+		command = strings.TrimSpace(string(data))
+	}
+	if command == "" {
+		return fmt.Errorf("usage: relay import curl '<command>' (or pipe the command via stdin)")
+	}
+	req, err := porter.ParseCurl(command)
+	if err != nil {
+		return err
+	}
+	path := *out
+	if path == "" {
+		slugged := strings.Trim(nonSlugRun.ReplaceAllString(strings.ToLower(req.Name), "-"), "-")
+		if slugged == "" {
+			slugged = "request"
+		}
+		path = slugged + ".req.toml"
+	}
+	if err := os.WriteFile(path, dsl.Marshal(req), 0o644); err != nil {
+		return err
+	}
+	fmt.Printf("wrote %s (%s %s)\n", path, req.Method, req.URL)
+	return nil
+}
+
 func cmdExport(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: relay export curl|k6|playwright <target>")
+		return fmt.Errorf("usage: relay export curl|k6|playwright|postman <target>")
 	}
 	target := args[0]
 	fs := flag.NewFlagSet("export "+target, flag.ExitOnError)
@@ -354,8 +402,14 @@ func cmdExport(args []string) error {
 		if err != nil {
 			return err
 		}
+	case "postman":
+		out, err := porter.ExportPostman(pos[0])
+		if err != nil {
+			return err
+		}
+		script = string(out)
 	default:
-		return fmt.Errorf("unknown export target %q (curl|k6|playwright)", target)
+		return fmt.Errorf("unknown export target %q (curl|k6|playwright|postman)", target)
 	}
 
 	if *out != "" {

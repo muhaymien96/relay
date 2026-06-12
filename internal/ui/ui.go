@@ -76,6 +76,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/history/{id}", s.handleHistoryGet)
 
 	mux.HandleFunc("POST /api/import/postman", s.handleImportPostman)
+	mux.HandleFunc("POST /api/import/curl", s.handleImportCurl)
 	mux.HandleFunc("GET /api/export", s.handleExport)
 	return mux
 }
@@ -430,6 +431,48 @@ func (s *Server) handleImportPostman(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"collectionId": colID, "requests": n})
 }
 
+// handleImportCurl parses a pasted curl command into a new request in the
+// given collection.
+func (s *Server) handleImportCurl(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		CollectionID int64  `json:"collectionId"`
+		FolderID     *int64 `json:"folderId"`
+		Curl         string `json:"curl"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		httpError(w, 400, err)
+		return
+	}
+	spec, err := porter.ParseCurl(in.Curl)
+	if err != nil {
+		httpError(w, 422, err)
+		return
+	}
+	if in.CollectionID == 0 {
+		cols, err := s.DB.Collections()
+		if err != nil {
+			httpError(w, 500, err)
+			return
+		}
+		if len(cols) == 0 {
+			col := &store.Collection{Name: "Imported", Headers: map[string]string{}, Vars: map[string]string{}}
+			if err := s.DB.CreateCollection(col); err != nil {
+				httpError(w, 500, err)
+				return
+			}
+			in.CollectionID = col.ID
+		} else {
+			in.CollectionID = cols[0].ID
+		}
+	}
+	req := &store.Request{CollectionID: in.CollectionID, FolderID: in.FolderID, Spec: spec}
+	if err := s.DB.CreateRequest(req); err != nil {
+		httpError(w, 422, err)
+		return
+	}
+	writeJSON(w, req)
+}
+
 func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	format := r.URL.Query().Get("format")
 	colID, err := atoi64(r.URL.Query().Get("collection"))
@@ -460,20 +503,25 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var script string
+	contentType := "text/plain; charset=utf-8"
 	switch format {
 	case "k6":
 		script, err = porter.K6(dir, env)
 	case "playwright":
 		script, err = porter.Playwright(dir, env)
+	case "postman":
+		var out []byte
+		out, err = porter.ExportPostman(dir)
+		script, contentType = string(out), "application/json"
 	default:
-		httpError(w, 400, fmt.Errorf("format must be k6 or playwright"))
+		httpError(w, 400, fmt.Errorf("format must be k6, playwright or postman"))
 		return
 	}
 	if err != nil {
 		httpError(w, 422, err)
 		return
 	}
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Type", contentType)
 	_, _ = w.Write([]byte(script))
 }
 

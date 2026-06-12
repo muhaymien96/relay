@@ -409,7 +409,24 @@ function renderEnvSel() {
 }
 $('envSel').onchange = () => { S.envName = $('envSel').value; localStorage.envName = S.envName; };
 
-$('importBtn').onclick = () => $('importFile').click();
+$('importBtn').onclick = async () => {
+  const pasted = prompt('Paste a curl command to import it as a request,\nor leave empty to choose a Postman collection file:');
+  if (pasted === null) return;
+  if (pasted.trim()) {
+    try {
+      const current = S.reqId && findReqMeta(S.reqId);
+      const created = await api('/api/import/curl', { method: 'POST',
+        body: { collectionId: current ? current.col.id : (S.state.collections[0]?.id || 0), curl: pasted.trim() } });
+      toast('curl imported');
+      await refresh();
+      S.openCols.add(created.collectionId);
+      renderSide();
+      openRequest(created.id);
+    } catch (e) { toast(e.message, true); }
+    return;
+  }
+  $('importFile').click();
+};
 $('importFile').onchange = async () => {
   const f = $('importFile').files[0]; if (!f) return;
   try {
@@ -423,13 +440,16 @@ $('exportBtn').onclick = async () => {
   const meta = S.reqId && findReqMeta(S.reqId);
   const col = meta ? meta.col : S.state.collections[0];
   if (!col) return toast('No collection to export', true);
-  const format = prompt('Export format: k6 or playwright', 'k6');
+  const format = prompt('Export format: k6, playwright or postman', 'postman');
   if (!format) return;
   try {
     const text = await api(`/api/export?format=${encodeURIComponent(format)}&collection=${col.id}&env=${encodeURIComponent(S.envName)}`);
-    const blob = new Blob([text], { type: 'text/plain' });
-    const a = h('a', { href: URL.createObjectURL(blob), download: format === 'k6' ? 'load.js' : 'api.spec.ts' });
+    const names = { k6: 'load.js', playwright: 'api.spec.ts', postman: slugify(col.name) + '.postman_collection.json' };
+    const payload = typeof text === 'string' ? text : JSON.stringify(text, null, 2);
+    const blob = new Blob([payload], { type: 'text/plain' });
+    const a = h('a', { href: URL.createObjectURL(blob), download: names[format] || 'export.txt' });
     a.click(); URL.revokeObjectURL(a.href);
+    toast(format + ' exported');
   } catch (e) { toast(e.message, true); }
 };
 
@@ -962,6 +982,7 @@ async function copyText(text, label) {
   }
   toast(label + ' copied to clipboard');
 }
+function slugify(s) { return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'collection'; }
 function fmtSize(n) { return n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(1) + ' MB'; }
 
 document.addEventListener('keydown', (e) => {

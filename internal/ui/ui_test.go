@@ -301,3 +301,52 @@ func TestRequestCurl(t *testing.T) {
 		t.Errorf("inherited headers missing: %s", cmd)
 	}
 }
+
+func TestImportCurlEndpoint(t *testing.T) {
+	s, _ := newServer(t)
+	rec, doc := call(t, s, "POST", "/api/import/curl",
+		`{"collectionId":1,"curl":"curl -X POST -H 'Content-Type: application/json' --data-raw '{\"a\":1}' https://x.test/v1/do"}`)
+	if rec.Code != 200 {
+		t.Fatalf("import curl: %d %v", rec.Code, doc)
+	}
+	spec := doc["spec"].(map[string]any)
+	if spec["method"] != "POST" || spec["url"] != "https://x.test/v1/do" {
+		t.Errorf("spec = %v", spec)
+	}
+	if spec["body"].(map[string]any)["type"] != "json" {
+		t.Errorf("body = %v", spec["body"])
+	}
+
+	rec, doc = call(t, s, "POST", "/api/import/curl", `{"collectionId":1,"curl":"wget https://x.test"}`)
+	if rec.Code != 422 {
+		t.Errorf("non-curl should 422, got %d %v", rec.Code, doc)
+	}
+}
+
+func TestExportPostmanEndpoint(t *testing.T) {
+	s, _ := newServer(t)
+	req := httptest.NewRequest("GET", "/api/export?format=postman&collection=1", nil)
+	out := httptest.NewRecorder()
+	s.Handler().ServeHTTP(out, req)
+	if out.Code != 200 {
+		t.Fatalf("export postman: %d %s", out.Code, out.Body.String())
+	}
+	var doc struct {
+		Info struct{ Name, Schema string }
+		Item []struct{ Name string }
+	}
+	if err := json.Unmarshal(out.Body.Bytes(), &doc); err != nil {
+		t.Fatalf("invalid postman json: %v", err)
+	}
+	if doc.Info.Name != "AML" || len(doc.Item) != 1 || doc.Item[0].Name != "Echo" {
+		t.Errorf("doc = %+v", doc)
+	}
+	// The secret preset value must not appear in the exported collection.
+	if strings.Contains(out.Body.String(), "topsecret") {
+		t.Error("preset secret leaked into postman export")
+	}
+	// Non-secret preset + collection headers are flattened in.
+	if !strings.Contains(out.Body.String(), "MOBILE_IOS") || !strings.Contains(out.Body.String(), "X-Team") {
+		t.Error("inherited headers missing from postman export")
+	}
+}

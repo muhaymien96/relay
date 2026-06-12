@@ -146,6 +146,8 @@ of objects.
 
 ```sh
 relay import postman collection.json --out my-collection   # Postman v2.x
+relay import curl 'curl -X POST -H "..." --data-raw "..." https://api/x'
+relay export postman my-collection --out my.postman_collection.json
 relay export curl my-collection/02-verify.req.toml --env sit
 relay export k6 my-collection --env sit --out load.js
 relay export playwright my-collection --env sit --out api.spec.ts
@@ -153,7 +155,17 @@ relay export playwright my-collection --env sit --out api.spec.ts
 
 Postman import maps folders to directories, requests to `.req.toml` files
 (deterministic output — clean diffs), collection variables to
-`collection.toml`, and bearer/basic/apikey auth.
+`collection.toml`, and bearer/basic/apikey auth. Postman **export** is the
+reverse: variables stay as raw `{{placeholders}}` (Postman shares the
+syntax), inherited headers are flattened per request, and assertions become
+`pm.test` scripts — the exported file re-imports through Relay or Postman.
+
+curl import understands what people actually paste (DevTools "Copy as
+cURL", docs, terminals): `-X/-H/-d/--data-raw/--data-urlencode/-u/-b/-A/-G`
+etc.; `Authorization: Bearer` headers become the auth helper, and the body
+type is inferred from Content-Type. The same parser powers the workbench's
+Import button (paste a curl, get a request in the current collection), and
+every request offers copy-as-curl back out.
 
 The k6/Playwright exporters resolve plain variables inline but keep two
 things dynamic in the generated script: secrets become `__ENV.RELAY_SECRET_*`
