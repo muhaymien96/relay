@@ -325,6 +325,7 @@ function renderSide() {
       list.append(h('div', { class: 'colRow', onclick: () => { open ? S.openCols.delete(c.id) : S.openCols.add(c.id); renderSide(); } },
         h('span', { class: 'car' }, open ? '▾' : '▸'), '🗀 ', c.name,
         h('button', { class: 'runBtn', title: 'Run collection', onclick: (e) => { e.stopPropagation(); runCollection(c); } }, '▶'),
+        h('button', { class: 'runBtn', title: 'Collection settings', onclick: (e) => { e.stopPropagation(); renderCollectionSettings(c); } }, '⚙'),
         h('button', { class: 'runBtn', title: 'Delete collection', onclick: async (e) => {
           e.stopPropagation();
           if (!confirm(`Delete collection "${c.name}" and all its requests?`)) return;
@@ -338,7 +339,9 @@ function renderSide() {
       const byFolder = (fid) => c.requests.filter(q => String(q.folderId) === String(fid));
       for (const q of byFolder(null)) list.append(reqRow(q));
       for (const f of c.folders) {
-        list.append(h('div', { class: 'folderRow' }, '🗀 ', f.name));
+        list.append(h('div', { class: 'folderRow' }, '🗀 ', f.name,
+          h('button', { class: 'runBtn', title: 'Folder settings', style: 'margin-left:auto',
+            onclick: (e) => { e.stopPropagation(); renderFolderSettings(f, c); } }, '⚙')));
         for (const q of byFolder(f.id)) list.append(reqRow(q));
       }
     }
@@ -767,13 +770,82 @@ function renderMeta() {
     h('div', { style: 'color:var(--faint);font-size:10px;margin-top:6px' }, `${st.count} recorded sends`)));
   if (S.req) {
     const meta = findReqMeta(S.req.id);
+    const sel = h('select', { style: 'width:100%;margin-top:4px', onchange: async (e) => {
+      S.req.folderId = e.target.value ? parseInt(e.target.value, 10) : null;
+      try { await api('/api/requests/' + S.req.id, { method: 'PUT', body: S.req }); await refresh(); toast('moved'); }
+      catch (err) { toast(err.message, true); }
+    } }, h('option', { value: '' }, 'collection root'));
+    if (meta) for (const f of meta.col.folders) {
+      sel.append(h('option', { value: f.id, selected: String(S.req.folderId) === String(f.id) ? '' : undefined }, f.name));
+    }
     m.append(h('div', { class: 'metaCard' }, h('span', { class: 'lbl' }, 'Location'),
-      h('div', {}, '🗀 ' + (meta ? meta.col.name : '')),
-      h('div', { style: 'color:var(--dim)' }, S.req.folderId ? ('└ ' + (meta.col.folders.find(f => f.id === S.req.folderId)?.name || '')) : '└ collection root')));
+      h('div', {}, '🗀 ' + (meta ? meta.col.name : '')), sel));
   }
   m.append(h('div', { class: 'metaCard' }, h('span', { class: 'lbl' }, 'Storage'),
     h('div', { style: 'color:var(--dim)' }, 'SQLite · local-first · no cloud')));
 }
+
+/* ---------- collection & folder settings ---------- */
+function settingsCard(title, subtitle) {
+  $('meta').hidden = true;
+  const work = $('work'); work.innerHTML = '';
+  $('crumb').innerHTML = ''; $('crumb').append('Workspace / ', h('b', {}, title), ' / Settings');
+  const card = h('div', { class: 'card', style: 'padding:16px' });
+  card.append(h('h2', { style: 'margin:0 0 4px;font-family:var(--mono)' }, title));
+  card.append(h('div', { style: 'color:var(--dim);margin-bottom:14px' }, subtitle));
+  work.append(card);
+  return card;
+}
+const sectionLbl = (text, extra) => h('div', { class: 'hdrTitle', style: 'padding:14px 0 4px' }, text, extra || '');
+
+function renderCollectionSettings(c) {
+  const card = settingsCard(c.name, 'Headers and variables here are inherited by every request in the collection.');
+  const save = debounce(async () => {
+    try { await api('/api/collections/' + c.id, { method: 'PATCH', body: c }); await refresh(); }
+    catch (e) { toast(e.message, true); }
+  }, 400);
+  card.append(h('div', { class: 'formRow' }, h('label', {}, 'Name'),
+    h('input', { type: 'text', value: c.name, onchange: (e) => { c.name = e.target.value; save(); } })));
+  card.append(sectionLbl('Inherited headers'));
+  card.append(kvTable(c.headers, { onchange: (v) => { c.headers = v; save(); } }));
+  card.append(sectionLbl('Variables'));
+  card.append(kvTable(c.vars, { onchange: (v) => { c.vars = v; save(); } }));
+
+  card.append(sectionLbl('Folders'));
+  const folderList = h('div', { class: 'chips' });
+  for (const f of c.folders || []) {
+    folderList.append(h('span', { class: 'att' }, '🗀 ' + f.name + ' ',
+      h('button', { class: 'delRow', title: 'Delete folder (and its requests)', onclick: async () => {
+        if (!confirm(`Delete folder "${f.name}" and the requests inside it?`)) return;
+        try { await api('/api/folders/' + f.id, { method: 'DELETE' }); await refresh(); renderCollectionSettings(findCol(c.id)); }
+        catch (e) { toast(e.message, true); }
+      } }, ' ✕')));
+  }
+  folderList.append(h('button', { class: 'att', onclick: async () => {
+    const name = prompt('New folder name'); if (!name) return;
+    try {
+      await api('/api/folders', { method: 'POST', body: { collectionId: c.id, name, headers: {}, vars: {} } });
+      await refresh(); renderCollectionSettings(findCol(c.id));
+    } catch (e) { toast(e.message, true); }
+  } }, '+ New folder'));
+  card.append(folderList);
+}
+
+function renderFolderSettings(f, c) {
+  const card = settingsCard(c.name + ' / ' + f.name, 'Headers and variables here apply to every request in this folder (they override collection-level values).');
+  const save = debounce(async () => {
+    try { await api('/api/folders/' + f.id, { method: 'PATCH', body: f }); await refresh(); }
+    catch (e) { toast(e.message, true); }
+  }, 400);
+  card.append(h('div', { class: 'formRow' }, h('label', {}, 'Name'),
+    h('input', { type: 'text', value: f.name, onchange: (e) => { f.name = e.target.value; save(); } })));
+  card.append(sectionLbl('Inherited headers'));
+  card.append(kvTable(f.headers, { onchange: (v) => { f.headers = v; save(); } }));
+  card.append(sectionLbl('Variables'));
+  card.append(kvTable(f.vars, { onchange: (v) => { f.vars = v; save(); } }));
+}
+
+function findCol(id) { return S.state.collections.find(c => c.id === id); }
 
 /* ---------- runner view ---------- */
 async function runCollection(col) {

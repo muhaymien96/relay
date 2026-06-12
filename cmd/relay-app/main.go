@@ -29,15 +29,24 @@ func main() {
 	if root == "" {
 		root = os.Getenv("RELAY_WORKSPACE")
 	}
+	if root == "" && flag.NArg() > 0 {
+		root = flag.Arg(0)
+	}
 	if root == "" {
-		if flag.NArg() > 0 {
-			root = flag.Arg(0)
+		// Double-click launch: the exe's directory may not be writable
+		// (Program Files, a network share), so default to ~/Relay.
+		if home, err := os.UserHomeDir(); err == nil {
+			root = filepath.Join(home, "Relay")
 		} else {
 			root = "."
 		}
 	}
 	abs, err := filepath.Abs(root)
 	if err != nil {
+		fmt.Fprintln(os.Stderr, "relay-app:", err)
+		os.Exit(1)
+	}
+	if err := os.MkdirAll(abs, 0o755); err != nil {
 		fmt.Fprintln(os.Stderr, "relay-app:", err)
 		os.Exit(1)
 	}

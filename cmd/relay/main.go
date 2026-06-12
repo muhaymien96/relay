@@ -26,7 +26,7 @@ import (
 	"github.com/muhaymien96/relay/internal/vars"
 )
 
-var version = "0.1.0-dev"
+var version = "0.2.0"
 
 var nonSlugRun = regexp.MustCompile(`[^a-z0-9]+`)
 

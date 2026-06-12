@@ -350,3 +350,27 @@ func TestExportPostmanEndpoint(t *testing.T) {
 		t.Error("inherited headers missing from postman export")
 	}
 }
+
+func TestMoveRequestToFolder(t *testing.T) {
+	s, reqID := newServer(t)
+	rec, doc := call(t, s, "POST", "/api/folders", `{"collectionId":1,"name":"verify","headers":{},"vars":{}}`)
+	if rec.Code != 200 {
+		t.Fatalf("folder create: %d %v", rec.Code, doc)
+	}
+	folderID := int64(doc["id"].(float64))
+
+	rec, _ = call(t, s, "PUT", "/api/requests/"+itoa(reqID),
+		`{"folderId":`+itoa(folderID)+`,"spec":{"name":"Echo","method":"GET","url":"{{baseUrl}}/echo"}}`)
+	if rec.Code != 200 {
+		t.Fatalf("move: %d", rec.Code)
+	}
+	rec, doc = call(t, s, "GET", "/api/requests/"+itoa(reqID), "")
+	if rec.Code != 200 || doc["folderId"] == nil || int64(doc["folderId"].(float64)) != folderID {
+		t.Errorf("folderId after move = %v", doc["folderId"])
+	}
+	// Folder rename via PATCH.
+	rec, _ = call(t, s, "PATCH", "/api/folders/"+itoa(folderID), `{"collectionId":1,"name":"renamed","headers":{"X-F":"1"},"vars":{}}`)
+	if rec.Code != 200 {
+		t.Errorf("folder patch: %d", rec.Code)
+	}
+}

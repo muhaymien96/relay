@@ -208,6 +208,16 @@ go build -tags desktop,production -o relay-app ./cmd/relay-app
 relay-app --workspace my-collection   # or RELAY_WORKSPACE=... relay-app
 ```
 
+## Distribution
+
+Tagged releases build signed-ready, checksummed binaries for Windows, macOS
+and Linux via [the release workflow](.github/workflows/release.yml). If
+Windows shows **"Windows protected your PC"** when colleagues run the exe,
+that's SmartScreen reacting to an unsigned download — see
+[docs/DISTRIBUTION.md](docs/DISTRIBUTION.md) for the one-click workaround
+(More info → Run anyway), checksum verification, and how to set up code
+signing for a permanent fix.
+
 ## Project docs
 
 - [Product Requirements (PRD)](docs/PRD.md)

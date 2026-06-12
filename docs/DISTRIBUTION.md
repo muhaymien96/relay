@@ -1,0 +1,76 @@
+# Distributing Relay
+
+## Building release binaries
+
+Tag a version (`git tag v0.2.0 && git push --tags`) and the
+[Release workflow](../.github/workflows/release.yml) builds, packages, and
+checksums `relay` + `relay-app` for Windows, macOS, and Linux, attaching
+everything to a GitHub Release.
+
+Locally:
+
+```sh
+# Windows (cross-compiles from any OS - the Windows webview path is pure Go)
+GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o relay.exe ./cmd/relay
+GOOS=windows GOARCH=amd64 go build -trimpath -tags desktop,production \
+  -ldflags "-s -w -H windowsgui" -o relay-app.exe ./cmd/relay-app
+```
+
+The `.syso` files in `cmd/relay*/` embed the icon, version info, and an
+application manifest (per-monitor DPI, long paths) into Windows builds
+automatically. Regenerate them after changing `winres/winres.json`:
+
+```sh
+go run github.com/tc-hib/go-winres@v0.3.3 make --in cmd/relay-app/winres/winres.json --out cmd/relay-app/rsrc
+go run github.com/tc-hib/go-winres@v0.3.3 make --in cmd/relay/winres/winres.json --out cmd/relay/rsrc
+```
+
+## "Windows protected your PC" (SmartScreen)
+
+When colleagues download and run an unsigned `relay-app.exe`, Microsoft
+Defender SmartScreen shows **"Windows protected your PC"**. This is not a
+defect in the binary — SmartScreen flags any executable that (a) carries the
+internet "Mark of the Web" and (b) has no code signature or download
+reputation yet.
+
+**Immediate workarounds** (tell your colleagues one of these):
+
+1. In the SmartScreen dialog click **More info → Run anyway**.
+2. Or before launching: right-click the `.exe` → **Properties** → tick
+   **Unblock** → OK.
+3. Or in PowerShell: `Unblock-File .\relay-app.exe`.
+4. Verify what you're unblocking first: compare the file's SHA-256
+   (`Get-FileHash .\relay-app.exe`) against the `SHA256SUMS.txt` published
+   with the release.
+
+Distribution inside a zip does not avoid this: Windows propagates the
+Mark of the Web to extracted files. Sharing over an internal file share or
+deploying via Intune/SCCM does avoid it (no MotW).
+
+**The permanent fix is Authenticode code signing.** This requires a
+certificate that identifies you or your company — it can't be generated;
+options in rough order of practicality:
+
+| Option | Cost | SmartScreen effect |
+|---|---|---|
+| **Azure Trusted Signing** | ~$10/month | Microsoft-issued identity; reputation accumulates quickly |
+| **EV code-signing certificate** (DigiCert, Sectigo, …) | ~$300–500/yr | Immediate SmartScreen reputation |
+| **OV code-signing certificate** | ~$80–200/yr | Signed + publisher named; reputation builds with downloads |
+| Unsigned | free | Warning until enough users have run that exact binary |
+
+The release workflow already supports signing: add repository secrets
+`WINDOWS_CERT_PFX_BASE64` (base64 of the `.pfx`) and
+`WINDOWS_CERT_PASSWORD`, and tagged builds are signed and timestamped
+automatically. Without the secrets the signing step is skipped.
+
+macOS has the analogous gate (Gatekeeper): unsigned apps need right-click →
+Open the first time, and the real fix is an Apple Developer ID certificate
+plus notarization.
+
+## What colleagues get
+
+- `relay-app.exe` — the desktop workbench. First launch creates
+  `%USERPROFILE%\Relay\relay.db` as the workspace; no installer, no admin
+  rights, no runtime dependencies (WebView2 ships with Windows 10/11).
+- `relay.exe` — the CLI for terminals and CI (`relay run`, import/export).
+- Both are self-contained single files; delete them to uninstall.
