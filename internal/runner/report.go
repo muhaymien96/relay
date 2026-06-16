@@ -29,25 +29,76 @@ func WriteJUnit(w io.Writer, r *Report) error {
 		Cases    []testcase `xml:"testcase"`
 	}
 
+	// Count individual pm.test assertions as separate JUnit test cases.
+	totalTests := 0
+	totalFailures := 0
+	var cases []testcase
+	for _, res := range r.Results {
+		if len(res.ScriptTests) == 0 && len(res.Assertions) == 0 {
+			// Plain request — one test case for the HTTP exchange.
+			totalTests++
+			tc := testcase{
+				Name:      res.Name,
+				Classname: res.File,
+				Time:      fmt.Sprintf("%.3f", res.Duration.Seconds()),
+			}
+			if res.Failed() {
+				totalFailures++
+				tc.Failure = &failure{
+					Message: failureSummary(res),
+					Body:    failureDetail(res),
+				}
+			}
+			cases = append(cases, tc)
+			continue
+		}
+		// Emit one testcase per assertion.
+		for _, a := range res.Assertions {
+			totalTests++
+			tc := testcase{
+				Name:      res.Name + " — " + a.Assertion.Type,
+				Classname: res.File,
+				Time:      fmt.Sprintf("%.3f", res.Duration.Seconds()),
+			}
+			if !a.Passed {
+				totalFailures++
+				tc.Failure = &failure{Message: a.Message, Body: failureDetail(res)}
+			}
+			cases = append(cases, tc)
+		}
+		// Emit one testcase per pm.test call.
+		for _, t := range res.ScriptTests {
+			totalTests++
+			tc := testcase{
+				Name:      res.Name + " — " + t.Name,
+				Classname: res.File,
+				Time:      fmt.Sprintf("%.3f", res.Duration.Seconds()),
+			}
+			if !t.Passed {
+				totalFailures++
+				tc.Failure = &failure{Message: t.Error, Body: failureDetail(res)}
+			}
+			cases = append(cases, tc)
+		}
+		// Transport / script runtime errors produce an extra failing case.
+		if res.Err != nil {
+			totalTests++
+			totalFailures++
+			cases = append(cases, testcase{
+				Name:      res.Name + " — error",
+				Classname: res.File,
+				Time:      fmt.Sprintf("%.3f", res.Duration.Seconds()),
+				Failure:   &failure{Message: res.Err.Error()},
+			})
+		}
+	}
+
 	suite := testsuite{
 		Name:     r.Root,
-		Tests:    len(r.Results),
-		Failures: r.Failures(),
+		Tests:    totalTests,
+		Failures: totalFailures,
 		Time:     fmt.Sprintf("%.3f", r.Duration.Seconds()),
-	}
-	for _, res := range r.Results {
-		tc := testcase{
-			Name:      res.Name,
-			Classname: res.File,
-			Time:      fmt.Sprintf("%.3f", res.Duration.Seconds()),
-		}
-		if res.Failed() {
-			tc.Failure = &failure{
-				Message: failureSummary(res),
-				Body:    failureDetail(res),
-			}
-		}
-		suite.Cases = append(suite.Cases, tc)
+		Cases:    cases,
 	}
 
 	if _, err := io.WriteString(w, xml.Header); err != nil {
@@ -55,11 +106,7 @@ func WriteJUnit(w io.Writer, r *Report) error {
 	}
 	enc := xml.NewEncoder(w)
 	enc.Indent("", "  ")
-	if err := enc.Encode(suite); err != nil {
-		return err
-	}
-	_, err := io.WriteString(w, "\n")
-	return err
+	return enc.Encode(suite)
 }
 
 // WriteJSON renders the report as JSON.
@@ -69,16 +116,22 @@ func WriteJSON(w io.Writer, r *Report) error {
 		Passed  bool   `json:"passed"`
 		Message string `json:"message"`
 	}
+	type scriptTestJSON struct {
+		Name   string `json:"name"`
+		Passed bool   `json:"passed"`
+		Error  string `json:"error,omitempty"`
+	}
 	type resultJSON struct {
-		Name       string          `json:"name"`
-		File       string          `json:"file"`
-		Method     string          `json:"method"`
-		URL        string          `json:"url"`
-		Status     int             `json:"status,omitempty"`
-		DurationMs int64           `json:"duration_ms"`
-		Error      string          `json:"error,omitempty"`
-		Passed     bool            `json:"passed"`
-		Assertions []assertionJSON `json:"assertions,omitempty"`
+		Name        string           `json:"name"`
+		File        string           `json:"file"`
+		Method      string           `json:"method"`
+		URL         string           `json:"url"`
+		Status      int              `json:"status,omitempty"`
+		DurationMs  int64            `json:"duration_ms"`
+		Error       string           `json:"error,omitempty"`
+		Passed      bool             `json:"passed"`
+		Assertions  []assertionJSON  `json:"assertions,omitempty"`
+		ScriptTests []scriptTestJSON `json:"scriptTests,omitempty"`
 	}
 	out := struct {
 		Root       string       `json:"root"`
@@ -112,6 +165,11 @@ func WriteJSON(w io.Writer, r *Report) error {
 				Type: a.Assertion.Type, Passed: a.Passed, Message: a.Message,
 			})
 		}
+		for _, t := range res.ScriptTests {
+			rj.ScriptTests = append(rj.ScriptTests, scriptTestJSON{
+				Name: t.Name, Passed: t.Passed, Error: t.Error,
+			})
+		}
 		out.Results = append(out.Results, rj)
 	}
 	enc := json.NewEncoder(w)
@@ -128,6 +186,11 @@ func failureSummary(res RequestResult) string {
 			return a.Message
 		}
 	}
+	for _, t := range res.ScriptTests {
+		if !t.Passed {
+			return t.Name + ": " + t.Error
+		}
+	}
 	return "failed"
 }
 
@@ -142,7 +205,18 @@ func failureDetail(res RequestResult) string {
 		if !a.Passed {
 			mark = "FAIL"
 		}
-		fmt.Fprintf(&b, "[%s] %s: %s\n", mark, a.Assertion.Type, a.Message)
+		fmt.Fprintf(&b, "[%s] assert(%s): %s\n", mark, a.Assertion.Type, a.Message)
+	}
+	for _, t := range res.ScriptTests {
+		mark := "PASS"
+		if !t.Passed {
+			mark = "FAIL"
+		}
+		detail := t.Name
+		if t.Error != "" {
+			detail += ": " + t.Error
+		}
+		fmt.Fprintf(&b, "[%s] pm.test: %s\n", mark, detail)
 	}
 	return b.String()
 }

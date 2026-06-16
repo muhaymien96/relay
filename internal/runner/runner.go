@@ -15,6 +15,7 @@ import (
 	"github.com/muhaymien96/relay/internal/assert"
 	"github.com/muhaymien96/relay/internal/dsl"
 	"github.com/muhaymien96/relay/internal/engine"
+	"github.com/muhaymien96/relay/internal/script"
 	"github.com/muhaymien96/relay/internal/vars"
 )
 
@@ -32,26 +33,39 @@ type Options struct {
 	OnDone  func(rr RequestResult)
 }
 
-// RequestResult is the outcome of one request in the run.
-type RequestResult struct {
-	Name       string
-	File       string
-	Method     string
-	URL        string
-	Status     int
-	Iteration  int // 1-based when the run is data-driven, else 0
-	Duration   time.Duration
-	Err        error // transport/resolution error; assertions not evaluated
-	Assertions []assert.Outcome
+// ScriptTest is one pm.test result from a test script.
+type ScriptTest struct {
+	Name   string
+	Passed bool
+	Error  string
 }
 
-// Failed reports whether the request errored or any assertion failed.
+// RequestResult is the outcome of one request in the run.
+type RequestResult struct {
+	Name        string
+	File        string
+	Method      string
+	URL         string
+	Status      int
+	Iteration   int // 1-based when the run is data-driven, else 0
+	Duration    time.Duration
+	Err         error // transport/resolution error; assertions not evaluated
+	Assertions  []assert.Outcome
+	ScriptTests []ScriptTest // results from pm.test() calls in test scripts
+}
+
+// Failed reports whether the request errored or any assertion/script test failed.
 func (r RequestResult) Failed() bool {
 	if r.Err != nil {
 		return true
 	}
 	for _, a := range r.Assertions {
 		if !a.Passed {
+			return true
+		}
+	}
+	for _, t := range r.ScriptTests {
+		if !t.Passed {
 			return true
 		}
 	}
@@ -144,10 +158,42 @@ func runOne(ctx context.Context, root, file string, row map[string]string, opts 
 		return rr
 	}
 	getenv := opts.Getenv
+	envVars := map[string]string{}
+	colVars := map[string]string{}
+	if opts.Env != nil {
+		for k, v := range opts.Env.Vars {
+			envVars[k] = v
+		}
+	}
+	for k, v := range scopeVars {
+		colVars[k] = v
+	}
+
 	scope := vars.NewScope(row, req.Vars, scopeVars)
 	if err := scope.AddEnvironment(opts.Env, getenv); err != nil {
 		rr.Err = err
 		return rr
+	}
+
+	// Pre-request script.
+	if req.Scripts != nil && req.Scripts.PreRequest != "" {
+		sc := &script.Scope{Env: envVars, Collection: colVars, Request: row}
+		sr := script.RunPreRequest(req.Scripts.PreRequest, sc)
+		// Propagate variable mutations back into the scope.
+		for k, v := range sr.UpdatedVars {
+			envVars[k] = v
+			colVars[k] = v
+		}
+		if len(sr.Errors) > 0 {
+			rr.Err = fmt.Errorf("pre-request script: %s", strings.Join(sr.Errors, "; "))
+			return rr
+		}
+		// Rebuild scope with mutated vars.
+		scope = vars.NewScope(row, req.Vars, colVars, envVars)
+		if err := scope.AddEnvironment(opts.Env, getenv); err != nil {
+			rr.Err = err
+			return rr
+		}
 	}
 
 	resolved, err := vars.Resolve(req, headers, scope)
@@ -171,6 +217,30 @@ func runOne(ctx context.Context, root, file string, row map[string]string, opts 
 		return rr
 	}
 	rr.Assertions = assert.Evaluate(resolvedAsserts, result)
+
+	// Post-response test script.
+	if req.Scripts != nil && req.Scripts.Tests != "" {
+		respHeaders := map[string]string{}
+		for k := range result.Headers {
+			respHeaders[k] = result.Headers.Get(k)
+		}
+		sc := &script.Scope{Env: envVars, Collection: colVars, Request: row}
+		sr := script.RunTests(req.Scripts.Tests, sc, &script.Response{
+			Code:       result.Status,
+			Status:     result.StatusText,
+			Headers:    respHeaders,
+			Body:       result.Body,
+			DurationMs: float64(rr.Duration.Microseconds()) / 1000,
+		})
+		for _, t := range sr.Tests {
+			rr.ScriptTests = append(rr.ScriptTests, ScriptTest{Name: t.Name, Passed: t.Passed, Error: t.Error})
+		}
+		if len(sr.Errors) > 0 {
+			// Script runtime errors (syntax, timeout) become a result error.
+			rr.Err = fmt.Errorf("test script: %s", strings.Join(sr.Errors, "; "))
+		}
+	}
+
 	return rr
 }
 

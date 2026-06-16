@@ -175,13 +175,53 @@ func postmanItem(req *dsl.Request, inherited map[string]string) map[string]any {
 	}
 
 	item := map[string]any{"name": req.Name, "request": pmReq}
+
+	var events []map[string]any
+
+	// Emit TOML assertions as pm.test lines.
 	if script := pmTests(req.Assertions); len(script) > 0 {
-		item["event"] = []map[string]any{{
+		events = append(events, map[string]any{
 			"listen": "test",
 			"script": map[string]any{"type": "text/javascript", "exec": script},
-		}}
+		})
+	}
+
+	// Preserve pre-request and test scripts verbatim (already pm.* syntax).
+	if s := req.Scripts; s != nil {
+		if s.PreRequest != "" {
+			events = append(events, map[string]any{
+				"listen": "prerequest",
+				"script": map[string]any{
+					"type": "text/javascript",
+					"exec": splitLines(s.PreRequest),
+				},
+			})
+		}
+		if s.Tests != "" {
+			// Merge with assertion lines if any.
+			testLines := splitLines(s.Tests)
+			if len(events) > 0 && events[0]["listen"] == "test" {
+				existing := events[0]["script"].(map[string]any)["exec"].([]string)
+				testLines = append(testLines, existing...)
+				events[0]["script"].(map[string]any)["exec"] = testLines
+			} else {
+				events = append(events, map[string]any{
+					"listen": "test",
+					"script": map[string]any{"type": "text/javascript", "exec": testLines},
+				})
+			}
+		}
+	}
+
+	if len(events) > 0 {
+		item["event"] = events
 	}
 	return item
+}
+
+func splitLines(s string) []string {
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	return lines
 }
 
 // pmTests renders assertions as Postman test-script lines.

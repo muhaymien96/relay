@@ -548,3 +548,34 @@ func (s *Store) SaveSettings(set Settings) error {
 		ON CONFLICT(id) DO UPDATE SET data = excluded.data`, j(set))
 	return err
 }
+
+// XraySettings holds Xray Cloud connection parameters (credentials come from
+// environment variables — never stored here).
+type XraySettings struct {
+	ProjectKey  string `json:"projectKey"`
+	TestPlanKey string `json:"testPlanKey"`
+	CloudURL    string `json:"cloudUrl"` // override default; empty = Xray Cloud default
+}
+
+func (s *Store) XraySettings() (XraySettings, error) {
+	if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS xray_settings (id INTEGER PRIMARY KEY CHECK (id = 1), data TEXT NOT NULL)`); err != nil {
+		return XraySettings{}, err
+	}
+	var data string
+	err := s.db.QueryRow(`SELECT data FROM xray_settings WHERE id = 1`).Scan(&data)
+	if err != nil {
+		return XraySettings{}, nil // no row yet = not configured
+	}
+	var xs XraySettings
+	_ = json.Unmarshal([]byte(data), &xs)
+	return xs, nil
+}
+
+func (s *Store) SaveXraySettings(xs XraySettings) error {
+	if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS xray_settings (id INTEGER PRIMARY KEY CHECK (id = 1), data TEXT NOT NULL)`); err != nil {
+		return err
+	}
+	_, err := s.db.Exec(`INSERT INTO xray_settings (id, data) VALUES (1, ?)
+		ON CONFLICT(id) DO UPDATE SET data = excluded.data`, j(xs))
+	return err
+}

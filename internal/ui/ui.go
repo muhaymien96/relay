@@ -17,6 +17,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/muhaymien96/relay/internal/adapters/tm"
+	"github.com/muhaymien96/relay/internal/adapters/xray"
 	"github.com/muhaymien96/relay/internal/assert"
 	"github.com/muhaymien96/relay/internal/dsl"
 	"github.com/muhaymien96/relay/internal/engine"
@@ -80,7 +82,12 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("POST /api/import/postman", s.handleImportPostman)
 	mux.HandleFunc("POST /api/import/curl", s.handleImportCurl)
+	mux.HandleFunc("POST /api/import/openapi", s.handleImportOpenAPI)
 	mux.HandleFunc("GET /api/export", s.handleExport)
+
+	mux.HandleFunc("GET /api/xray/settings", s.handleXraySettingsGet)
+	mux.HandleFunc("PUT /api/xray/settings", s.handleXraySettingsPut)
+	mux.HandleFunc("POST /api/xray/push", s.handleXrayPush)
 	return mux
 }
 
@@ -552,8 +559,12 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 		var out []byte
 		out, err = porter.ExportPostman(dir)
 		script, contentType = string(out), "application/json"
+	case "openapi":
+		var out []byte
+		out, err = porter.ExportOpenAPI(dir)
+		script, contentType = string(out), "application/json"
 	default:
-		httpError(w, 400, fmt.Errorf("format must be k6, playwright or postman"))
+		httpError(w, 400, fmt.Errorf("format must be k6, playwright, postman or openapi"))
 		return
 	}
 	if err != nil {
@@ -562,6 +573,151 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", contentType)
 	_, _ = w.Write([]byte(script))
+}
+
+// handleImportOpenAPI imports an OpenAPI 3.x JSON document as a collection.
+func (s *Server) handleImportOpenAPI(w http.ResponseWriter, r *http.Request) {
+	data, err := readBody(r, 20<<20)
+	if err != nil {
+		httpError(w, 400, err)
+		return
+	}
+	tmp, err := os.MkdirTemp("", "relay-import-oa-*")
+	if err != nil {
+		httpError(w, 500, err)
+		return
+	}
+	defer os.RemoveAll(tmp)
+	n, err := porter.ImportOpenAPI(data, tmp)
+	if err != nil {
+		httpError(w, 422, err)
+		return
+	}
+	colID, err := s.DB.SeedFromDir(tmp)
+	if err != nil {
+		httpError(w, 500, err)
+		return
+	}
+	writeJSON(w, map[string]any{"collectionId": colID, "requests": n})
+}
+
+// handleExport adds openapi to the existing export handler.
+// (The original handler is preserved; this only extends the switch.)
+
+// --- Xray Cloud settings ---
+
+func (s *Server) handleXraySettingsGet(w http.ResponseWriter, r *http.Request) {
+	set, err := s.DB.XraySettings()
+	if err != nil {
+		httpError(w, 500, err)
+		return
+	}
+	writeJSON(w, set)
+}
+
+func (s *Server) handleXraySettingsPut(w http.ResponseWriter, r *http.Request) {
+	var xs store.XraySettings
+	if err := json.NewDecoder(r.Body).Decode(&xs); err != nil {
+		httpError(w, 400, err)
+		return
+	}
+	if err := s.DB.SaveXraySettings(xs); err != nil {
+		httpError(w, 500, err)
+		return
+	}
+	writeJSON(w, xs)
+}
+
+// handleXrayPush runs the collection and pushes results to Xray Cloud.
+func (s *Server) handleXrayPush(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		CollectionID int64  `json:"collectionId"`
+		Env          string `json:"env"`
+		Summary      string `json:"summary"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		httpError(w, 400, err)
+		return
+	}
+	xs, err := s.DB.XraySettings()
+	if err != nil || xs.ProjectKey == "" {
+		httpError(w, 422, fmt.Errorf("xray not configured: set project key in Settings → Xray"))
+		return
+	}
+	xrayCfg := xray.Config{
+		ClientID:     os.Getenv("RELAY_XRAY_CLIENT_ID"),
+		ClientSecret: os.Getenv("RELAY_XRAY_CLIENT_SECRET"),
+	}
+	if xrayCfg.ClientID == "" || xrayCfg.ClientSecret == "" {
+		httpError(w, 422, fmt.Errorf("RELAY_XRAY_CLIENT_ID and RELAY_XRAY_CLIENT_SECRET must be set"))
+		return
+	}
+	if xs.CloudURL != "" {
+		xrayCfg.GQLURL = xs.CloudURL
+	}
+
+	// Run the collection.
+	requests, err := s.DB.Requests(in.CollectionID)
+	if err != nil || len(requests) == 0 {
+		httpError(w, 404, fmt.Errorf("collection %d has no requests", in.CollectionID))
+		return
+	}
+	started := time.Now()
+	var results []tm.TestResult
+	for i := range requests {
+		req := &requests[i]
+		out, _, execErr := s.execute(r.Context(), req, in.Env, false)
+		status := tm.StatusPASS
+		comment := ""
+		if execErr != nil {
+			status = tm.StatusFAIL
+			comment = execErr.Error()
+		} else {
+			for _, a := range out.Assertions {
+				if !a.Passed {
+					status = tm.StatusFAIL
+					if comment != "" {
+						comment += "; "
+					}
+					comment += a.Message
+				}
+			}
+		}
+		results = append(results, tm.TestResult{
+			Name:       req.Spec.Name,
+			Status:     status,
+			Comment:    comment,
+			DurationMs: out.Timing["total"],
+		})
+	}
+	finished := time.Now()
+
+	summary := in.Summary
+	if summary == "" {
+		col, _ := s.DB.Collection(in.CollectionID)
+		if col != nil {
+			summary = "Relay run: " + col.Name
+		} else {
+			summary = "Relay automated test execution"
+		}
+	}
+
+	exec := tm.Execution{
+		ProjectKey:  xs.ProjectKey,
+		TestPlanKey: xs.TestPlanKey,
+		Summary:     summary,
+		StartedAt:   started,
+		FinishedAt:  finished,
+		Results:     results,
+	}
+
+	client := xray.New(xrayCfg)
+	key, err := client.PushExecution(exec)
+	if err != nil {
+		httpError(w, 502, fmt.Errorf("xray push failed: %w", err))
+		return
+	}
+	writeJSON(w, map[string]string{"executionKey": key})
 }
 
 func ms(d time.Duration) float64 { return float64(d.Microseconds()) / 1000 }

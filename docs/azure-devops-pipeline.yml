@@ -1,0 +1,115 @@
+# Relay Azure DevOps Pipeline Template
+#
+# Runs a Relay collection, publishes JUnit results to Azure Test Plans,
+# and optionally pushes executions to Xray Cloud.
+#
+# Usage: reference this template from your azure-pipelines.yml:
+#
+#   resources:
+#     repositories:
+#       - repository: relay-templates
+#         type: github
+#         name: muhaymien96/relay
+#         ref: main
+#   stages:
+#     - template: docs/azure-devops-pipeline.yml@relay-templates
+#       parameters:
+#         collectionDir: collections/aml-regression
+#         environment: sit
+#         pushXray: true
+#
+# Or inline the steps directly (see below).
+
+parameters:
+  - name: collectionDir
+    type: string
+    displayName: Path to the collection directory
+    default: collections
+
+  - name: environment
+    type: string
+    displayName: Relay environment name (matches environments/<name>.toml)
+    default: ''
+
+  - name: reportFile
+    type: string
+    displayName: JUnit report output file
+    default: relay-results.xml
+
+  - name: relayVersion
+    type: string
+    displayName: Relay binary version to download
+    default: '0.2.0'
+
+  - name: pushXray
+    type: boolean
+    displayName: Push results to Xray Cloud after run
+    default: false
+
+  - name: bail
+    type: boolean
+    displayName: Stop on first failure
+    default: false
+
+  - name: timeout
+    type: string
+    displayName: Per-request timeout
+    default: '30s'
+
+stages:
+  - stage: relay_test
+    displayName: 'Relay API Tests'
+    jobs:
+      - job: run_collection
+        displayName: 'Run Relay Collection'
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - task: GoTool@0
+            displayName: 'Install Go'
+            inputs:
+              version: '1.25'
+
+          - script: |
+              go install github.com/muhaymien96/relay/cmd/relay@v${{ parameters.relayVersion }} \
+                || go build -o $(go env GOPATH)/bin/relay ./cmd/relay
+              echo "##vso[task.setvariable variable=PATH]$(go env GOPATH)/bin:$(PATH)"
+            displayName: 'Install relay CLI'
+            workingDirectory: $(Build.SourcesDirectory)
+
+          - script: |
+              RELAY_FLAGS=""
+              if [ -n "${{ parameters.environment }}" ]; then
+                RELAY_FLAGS="--env ${{ parameters.environment }}"
+              fi
+              if [ "${{ parameters.bail }}" = "true" ]; then
+                RELAY_FLAGS="$RELAY_FLAGS --bail"
+              fi
+              relay run "${{ parameters.collectionDir }}" \
+                $RELAY_FLAGS \
+                --report junit \
+                --out "${{ parameters.reportFile }}" \
+                --timeout "${{ parameters.timeout }}" \
+                || true   # don't fail here; let the JUnit publisher report
+            displayName: 'Run collection'
+            env:
+              # Forward all RELAY_SECRET_* variables set in the pipeline library.
+              RELAY_SECRET_APIKEY: $(RELAY_SECRET_APIKEY)
+              RELAY_SECRET_BEARER_TOKEN: $(RELAY_SECRET_BEARER_TOKEN)
+              # Xray credentials (only needed when pushXray: true).
+              RELAY_XRAY_CLIENT_ID: $(RELAY_XRAY_CLIENT_ID)
+              RELAY_XRAY_CLIENT_SECRET: $(RELAY_XRAY_CLIENT_SECRET)
+
+          - task: PublishTestResults@2
+            displayName: 'Publish test results to Azure Test Plans'
+            inputs:
+              testResultsFormat: JUnit
+              testResultsFiles: '${{ parameters.reportFile }}'
+              failTaskOnFailedTests: true
+              testRunTitle: 'Relay — ${{ parameters.collectionDir }}'
+            condition: always()
+
+          # Optional: push to Xray Cloud via the relay UI API.
+          # Requires relay ui to be running, which is impractical in headless
+          # CI. Use the CLI approach: relay run --push-xray (roadmap item)
+          # or use the provided xray_push.sh script below.

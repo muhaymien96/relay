@@ -39,8 +39,10 @@ Usage:
                              [--insecure] [--timeout 30s]
   relay import postman <collection.json> [--out DIR]
   relay import curl '<command>'          [--out FILE]   (or pipe via stdin)
+  relay import openapi <spec.json>       [--out DIR]
   relay export curl <file.req.toml> [--env NAME]
   relay export postman <dir> [--out collection.json]
+  relay export openapi <dir> [--out spec.json]
   relay export k6 <dir> [--env NAME] [--out script.js]
   relay export playwright <dir> [--env NAME] [--out api.spec.ts]
   relay ui [dir] [--db relay.db] [--port 7717]
@@ -289,8 +291,11 @@ func cmdImport(args []string) error {
 	if len(args) >= 1 && args[0] == "curl" {
 		return cmdImportCurl(args[1:])
 	}
+	if len(args) >= 1 && args[0] == "openapi" {
+		return cmdImportOpenAPI(args[1:])
+	}
 	if len(args) < 1 || args[0] != "postman" {
-		return fmt.Errorf("usage: relay import postman|curl ...")
+		return fmt.Errorf("usage: relay import postman|curl|openapi ...")
 	}
 	fs := flag.NewFlagSet("import postman", flag.ExitOnError)
 	out := fs.String("out", "", "output directory (default: collection name)")
@@ -319,6 +324,42 @@ func cmdImport(args []string) error {
 		dir = probe.Info.Name
 	}
 	n, err := porter.ImportPostman(data, dir)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("imported %d requests into %s/\n", n, dir)
+	return nil
+}
+
+func cmdImportOpenAPI(args []string) error {
+	fs := flag.NewFlagSet("import openapi", flag.ExitOnError)
+	out := fs.String("out", "", "output directory (default: spec title slug)")
+	pos, err := parseInterleaved(fs, args)
+	if err != nil {
+		return err
+	}
+	if len(pos) != 1 {
+		return fmt.Errorf("usage: relay import openapi <spec.json>")
+	}
+	data, err := os.ReadFile(pos[0])
+	if err != nil {
+		return err
+	}
+	dir := *out
+	if dir == "" {
+		var probe struct {
+			Info struct{ Title string `json:"title"` } `json:"info"`
+		}
+		_ = json.Unmarshal(data, &probe)
+		if probe.Info.Title != "" {
+			dir = nonSlugRun.ReplaceAllString(strings.ToLower(probe.Info.Title), "-")
+			dir = strings.Trim(dir, "-")
+		}
+		if dir == "" {
+			dir = "openapi-collection"
+		}
+	}
+	n, err := porter.ImportOpenAPI(data, dir)
 	if err != nil {
 		return err
 	}
@@ -408,8 +449,14 @@ func cmdExport(args []string) error {
 			return err
 		}
 		script = string(out)
+	case "openapi":
+		out, err := porter.ExportOpenAPI(pos[0])
+		if err != nil {
+			return err
+		}
+		script = string(out)
 	default:
-		return fmt.Errorf("unknown export target %q (curl|k6|playwright|postman)", target)
+		return fmt.Errorf("unknown export target %q (curl|k6|playwright|postman|openapi)", target)
 	}
 
 	if *out != "" {
