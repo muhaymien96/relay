@@ -186,7 +186,9 @@ func TestReports(t *testing.T) {
 	if err := xml.Unmarshal(junit.Bytes(), &suite); err != nil {
 		t.Fatalf("junit output invalid: %v\n%s", err, junit.String())
 	}
-	if suite.Tests != 3 || suite.Failures != 1 {
+	// The reporter emits one JUnit testcase per assertion (not per request),
+	// so: 01-ok (2) + sub/02-echo (3) + 03-fail (1) = 6 total, 1 failure.
+	if suite.Tests != 6 || suite.Failures != 1 {
 		t.Errorf("junit tests=%d failures=%d", suite.Tests, suite.Failures)
 	}
 

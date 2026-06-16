@@ -79,6 +79,16 @@ func Marshal(r *Request) []byte {
 		}
 	}
 
+	if s := r.Scripts; s != nil && (s.PreRequest != "" || s.Tests != "") {
+		b.WriteString("\n[scripts]\n")
+		if s.PreRequest != "" {
+			writeScript(&b, "pre_request", s.PreRequest)
+		}
+		if s.Tests != "" {
+			writeScript(&b, "tests", s.Tests)
+		}
+	}
+
 	return []byte(b.String())
 }
 
@@ -92,6 +102,17 @@ func writeList(b *strings.Builder, name string, items []string) {
 	}
 	fmt.Fprintf(b, "%s = [%s]\n", name, strings.Join(parts, ", "))
 }
+
+// writeScript writes a JS script value using TOML multiline literal strings so
+// that the source code is readable and git-diffable.
+func writeScript(b *strings.Builder, key, src string) {
+	if multilineSafe(src) {
+		fmt.Fprintf(b, "%s = '''\n%s'''\n", key, src)
+	} else {
+		fmt.Fprintf(b, "%s = %s\n", key, quote(src))
+	}
+}
+
 
 func writeTable(b *strings.Builder, name string, m map[string]string) {
 	if len(m) == 0 {

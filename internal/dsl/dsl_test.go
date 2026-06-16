@@ -146,3 +146,32 @@ func TestDefaultMethod(t *testing.T) {
 		t.Errorf("default method = %q", r.Method)
 	}
 }
+
+func TestScriptsRoundTrip(t *testing.T) {
+	r := &Request{
+		Name:   "with scripts",
+		Method: "POST",
+		URL:    "https://api.example.com/test",
+		Scripts: &Scripts{
+			PreRequest: "pm.environment.set(\"x\", \"1\");",
+			Tests: `pm.test("status ok", function() {
+  pm.expect(pm.response.code).to.equal(200);
+});
+`,
+		},
+	}
+	out := Marshal(r)
+	r2, err := LoadRequest(writeReq(t, string(out)))
+	if err != nil {
+		t.Fatalf("parse failed: %v\n%s", err, out)
+	}
+	if r2.Scripts == nil {
+		t.Fatal("scripts nil after round-trip")
+	}
+	if r2.Scripts.PreRequest != r.Scripts.PreRequest {
+		t.Errorf("pre_request: got %q want %q", r2.Scripts.PreRequest, r.Scripts.PreRequest)
+	}
+	if r2.Scripts.Tests != r.Scripts.Tests {
+		t.Errorf("tests: got %q want %q", r2.Scripts.Tests, r.Scripts.Tests)
+	}
+}

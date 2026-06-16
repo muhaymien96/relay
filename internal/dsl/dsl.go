@@ -11,6 +11,12 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
+// Scripts holds optional JavaScript source for pre-request and test phases.
+type Scripts struct {
+	PreRequest string `toml:"pre_request,omitempty" json:"preRequest,omitempty"`
+	Tests      string `toml:"tests,omitempty" json:"tests,omitempty"`
+}
+
 // Request is one .req.toml file.
 type Request struct {
 	Name       string            `toml:"name" json:"name"`
@@ -22,6 +28,7 @@ type Request struct {
 	Auth       *Auth             `toml:"auth" json:"auth,omitempty"`
 	Body       *Body             `toml:"body" json:"body,omitempty"`
 	Assertions []Assertion       `toml:"assertions" json:"assertions,omitempty"`
+	Scripts    *Scripts          `toml:"scripts" json:"scripts,omitempty"`
 
 	// Test-management metadata. Optional; absent from older .req.toml files.
 	Tags         []string `toml:"tags" json:"tags,omitempty"`

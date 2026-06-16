@@ -156,6 +156,46 @@
   .iconBtn:hover { color: var(--ink); border-color: var(--ink); }
   #respMeta .actions { margin-left: auto; display: flex; gap: 6px; }
   .json-k { color: var(--ink); } .json-s { color: #0d7a52; } .json-n { color: #b45309; }
+
+  /* script editor */
+  .scriptWrap { position: relative; border: 1px solid var(--line2); border-radius: 8px; overflow: hidden; }
+  .scriptSubTabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line2); padding: 0 10px; background: #fafbfe; }
+  .scriptSubTabs button { border: 0; background: none; padding: 7px 12px; color: var(--dim); font-size: 12px;
+                           font-weight: 600; border-bottom: 2px solid transparent; }
+  .scriptSubTabs button.on { color: var(--fg); border-bottom-color: var(--ink); }
+  .scriptEditor { position: relative; font-family: var(--mono); font-size: 12.5px; min-height: 200px; }
+  .scriptEditor textarea {
+    position: absolute; inset: 0; width: 100%; height: 100%; min-height: 200px;
+    border: 0; padding: 12px 12px 12px 52px; font: inherit; resize: vertical;
+    background: transparent; color: transparent; caret-color: var(--fg);
+    outline: none; z-index: 2; white-space: pre; overflow-wrap: normal; overflow-x: auto;
+    line-height: 1.6; spellcheck: false;
+  }
+  .scriptHighlight {
+    position: absolute; inset: 0; padding: 12px 12px 12px 52px;
+    font: inherit; pointer-events: none; white-space: pre; overflow: auto;
+    line-height: 1.6; color: var(--fg); z-index: 1; background: #f8f9fe;
+  }
+  .scriptLineNums {
+    position: absolute; left: 0; top: 0; width: 44px; padding: 12px 8px;
+    text-align: right; font: inherit; color: var(--faint); line-height: 1.6;
+    pointer-events: none; user-select: none; background: #f0f1f8;
+    border-right: 1px solid var(--line2); z-index: 3;
+  }
+  .scriptErr { background: #fdf3f3; border: 1px solid #f3d4d4; border-radius: 7px;
+               padding: 6px 12px; font-family: var(--mono); font-size: 12px; color: var(--red);
+               margin-top: 8px; }
+  .scriptSnippets { display: flex; gap: 6px; flex-wrap: wrap; padding: 8px 0; }
+  .scriptSnippets button { font-size: 11px; padding: 3px 10px; border: 1px solid var(--line2);
+                            border-radius: 99px; background: #fff; color: var(--dim); font-weight: 600; }
+  .scriptSnippets button:hover { color: var(--ink); border-color: var(--ink); }
+  /* JS syntax tokens */
+  .js-kw { color: #7c3aed; font-weight: 600; }
+  .js-fn { color: #1d4ed8; }
+  .js-pm { color: #0369a1; font-weight: 600; }
+  .js-str { color: #0d7a52; }
+  .js-num { color: #b45309; }
+  .js-cmt { color: var(--faint); font-style: italic; }
   #assertChips { padding: 8px 14px 12px; display: flex; gap: 8px; flex-wrap: wrap; }
   .chip { font-size: 11px; border-radius: 99px; padding: 2px 10px; font-weight: 600; }
   .chip.ok { background: #e7f7f0; color: var(--green); }
@@ -643,28 +683,44 @@ function renderEnvSel() {
 $('envSel').onchange = () => { S.envName = $('envSel').value; localStorage.envName = S.envName; };
 
 $('importBtn').onclick = async () => {
-  const pasted = prompt('Paste a curl command to import it as a request,\nor leave empty to choose a Postman collection file:');
-  if (pasted === null) return;
-  if (pasted.trim()) {
-    try {
-      const current = S.reqId && findReqMeta(S.reqId);
-      const created = await api('/api/import/curl', { method: 'POST',
-        body: { collectionId: current ? current.col.id : (S.state.collections[0]?.id || 0), curl: pasted.trim() } });
-      toast('curl imported');
-      await refresh();
-      S.openCols.add(created.collectionId);
-      renderSide();
-      openRequest(created.id);
-    } catch (e) { toast(e.message, true); }
+  const choice = prompt('Import from:\n  1 — Postman collection JSON\n  2 — OpenAPI 3.x spec JSON\n  3 — Paste a curl command\n\nEnter 1, 2, 3 or paste curl directly:');
+  if (choice === null) return;
+  const trimmed = choice.trim();
+  if (trimmed === '1' || trimmed === '') {
+    $('importFile').dataset.mode = 'postman';
+    $('importFile').click();
     return;
   }
-  $('importFile').click();
+  if (trimmed === '2') {
+    $('importFile').dataset.mode = 'openapi';
+    $('importFile').click();
+    return;
+  }
+  // curl command (3 or any curl string)
+  const curlCmd = trimmed === '3' ? prompt('Paste curl command:') : trimmed;
+  if (!curlCmd) return;
+  try {
+    const current = S.reqId && findReqMeta(S.reqId);
+    const created = await api('/api/import/curl', { method: 'POST',
+      body: { collectionId: current ? current.col.id : (S.state.collections[0]?.id || 0), curl: curlCmd.trim() } });
+    toast('curl imported');
+    await refresh();
+    S.openCols.add(created.collectionId);
+    renderSide();
+    openRequest(created.id);
+  } catch (e) { toast(e.message, true); }
 };
 $('importFile').onchange = async () => {
   const f = $('importFile').files[0]; if (!f) return;
+  const mode = $('importFile').dataset.mode || 'postman';
   try {
-    const out = await api('/api/import/postman', { method: 'POST', body: await f.text() });
-    toast(`Imported ${out.requests} requests`);
+    if (mode === 'openapi') {
+      const out = await api('/api/import/openapi', { method: 'POST', body: await f.text() });
+      toast(`OpenAPI imported: ${out.requests} requests`);
+    } else {
+      const out = await api('/api/import/postman', { method: 'POST', body: await f.text() });
+      toast(`Imported ${out.requests} requests`);
+    }
     await refresh();
   } catch (e) { toast(e.message, true); }
   $('importFile').value = '';
@@ -673,11 +729,15 @@ $('exportBtn').onclick = async () => {
   const meta = S.reqId && findReqMeta(S.reqId);
   const col = meta ? meta.col : S.state.collections[0];
   if (!col) return toast('No collection to export', true);
-  const format = prompt('Export format: k6, playwright or postman', 'postman');
+  const format = prompt('Export format:\n  postman — Postman Collection v2.1\n  openapi — OpenAPI 3.x spec\n  k6 — k6 load test script\n  playwright — Playwright API test\n\nEnter format:', 'postman');
   if (!format) return;
   try {
     const text = await api(`/api/export?format=${encodeURIComponent(format)}&collection=${col.id}&env=${encodeURIComponent(S.envName)}`);
-    const names = { k6: 'load.js', playwright: 'api.spec.ts', postman: slugify(col.name) + '.postman_collection.json' };
+    const names = {
+      k6: 'load.js', playwright: 'api.spec.ts',
+      postman: slugify(col.name) + '.postman_collection.json',
+      openapi: slugify(col.name) + '.openapi.json',
+    };
     const payload = typeof text === 'string' ? text : JSON.stringify(text, null, 2);
     const blob = new Blob([payload], { type: 'text/plain' });
     const a = h('a', { href: URL.createObjectURL(blob), download: names[format] || 'export.txt' });
@@ -767,10 +827,11 @@ function renderRequest() {
         onchange: (e) => { spec.url = e.target.value; save(); } }),
       h('button', { class: 'btn dark', id: 'sendBtn', onclick: send }, 'Send'),
     ),
-    h('div', { class: 'tabs' }, ['params', 'authorization', 'headers', 'body', 'assertions', 'vars'].map(t =>
+    h('div', { class: 'tabs' }, ['params', 'authorization', 'headers', 'body', 'assertions', 'scripts', 'vars'].map(t =>
       h('button', { class: S.tab === t ? 'on' : '', onclick: () => { S.tab = t; renderRequest(); } },
         t[0].toUpperCase() + t.slice(1),
-        t === 'headers' && Object.keys(spec.headers || {}).length ? h('span', { class: 'n' }, Object.keys(spec.headers).length) : ''))),
+        t === 'headers' && Object.keys(spec.headers || {}).length ? h('span', { class: 'n' }, Object.keys(spec.headers).length) : '',
+        t === 'scripts' && (spec.scripts?.preRequest || spec.scripts?.tests) ? h('span', { class: 'n' }, '●') : ''))),
     h('div', { class: 'tabBody', id: 'tabBody' }));
   work.append(editor);
 
@@ -816,6 +877,10 @@ function renderRequest() {
       onchange: (e) => { spec.body = { ...body, content: e.target.value }; if (!spec.body.content) spec.body = null; save(); } }, body.content || ''));
   } else if (S.tab === 'assertions') {
     tb.append(buildAssertionsEditor(spec, save));
+  } else if (S.tab === 'scripts') {
+    const scripts = { preRequest: '', tests: '', ...(spec.scripts || {}) };
+    tb.append(renderScriptsTab(spec, scripts, save));
+
   }
 
   // response card
@@ -824,6 +889,145 @@ function renderRequest() {
   work.append(resp);
 
   renderMeta();
+}
+
+/* ---------- JS syntax highlighter ---------- */
+function highlightJS(code) {
+  const escape = (s) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const tokens = [];
+  let i = 0;
+  while (i < code.length) {
+    // line comment
+    if (code[i] === '/' && code[i+1] === '/') {
+      const end = code.indexOf('\n', i);
+      const s = end === -1 ? code.slice(i) : code.slice(i, end);
+      tokens.push(`<span class="js-cmt">${escape(s)}</span>`);
+      i += s.length; continue;
+    }
+    // block comment
+    if (code[i] === '/' && code[i+1] === '*') {
+      const end = code.indexOf('*/', i+2);
+      const s = end === -1 ? code.slice(i) : code.slice(i, end+2);
+      tokens.push(`<span class="js-cmt">${escape(s)}</span>`);
+      i += s.length; continue;
+    }
+    // string (single, double, template)
+    if (code[i] === '"' || code[i] === "'" || code[i] === '`') {
+      const q = code[i]; let j = i+1, s = q;
+      while (j < code.length) {
+        if (code[j] === '\\') { s += code[j] + code[j+1]; j += 2; continue; }
+        s += code[j]; if (code[j++] === q) break;
+      }
+      tokens.push(`<span class="js-str">${escape(s)}</span>`);
+      i = j; continue;
+    }
+    // number
+    const nm = /^-?\d+\.?\d*([eE][+-]?\d+)?/.exec(code.slice(i));
+    if (nm && (i === 0 || /[\s=+\-*/(,\[]/.test(code[i-1]))) {
+      tokens.push(`<span class="js-num">${nm[0]}</span>`);
+      i += nm[0].length; continue;
+    }
+    // identifier / keyword
+    const id = /^[a-zA-Z_$][\w$]*/.exec(code.slice(i));
+    if (id) {
+      const w = id[0];
+      const kws = new Set(['var','let','const','function','return','if','else','for','while','do','try','catch','finally','throw','new','this','typeof','instanceof','in','of','break','continue','switch','case','default','true','false','null','undefined']);
+      const pmMethods = new Set(['pm','test','expect','environment','collectionVariables','variables','response','request']);
+      if (kws.has(w)) tokens.push(`<span class="js-kw">${escape(w)}</span>`);
+      else if (pmMethods.has(w)) tokens.push(`<span class="js-pm">${escape(w)}</span>`);
+      else tokens.push(escape(w));
+      i += w.length; continue;
+    }
+    tokens.push(escape(code[i])); i++;
+  }
+  return tokens.join('');
+}
+
+function scriptEditor(value, onChange) {
+  const wrap = h('div', { class: 'scriptEditor' });
+  const lineNums = h('div', { class: 'scriptLineNums' });
+  const highlight = h('div', { class: 'scriptHighlight' });
+  const ta = h('textarea', { spellcheck: 'false', autocomplete: 'off', autocorrect: 'off',
+    autocapitalize: 'off', wrap: 'off', value: value });
+
+  const update = () => {
+    const lines = ta.value.split('\n');
+    lineNums.innerHTML = lines.map((_, i) => i+1).join('\n');
+    highlight.innerHTML = highlightJS(ta.value) + '\n';
+    onChange(ta.value);
+  };
+  ta.addEventListener('input', update);
+  ta.addEventListener('keydown', (e) => {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const s = ta.selectionStart, end = ta.selectionEnd;
+      ta.value = ta.value.slice(0, s) + '  ' + ta.value.slice(end);
+      ta.selectionStart = ta.selectionEnd = s + 2;
+      update();
+    }
+  });
+  wrap.append(lineNums, highlight, ta);
+  // Initial render.
+  setTimeout(update, 0);
+  return wrap;
+}
+
+const PM_SNIPPETS = [
+  ['Status 200', `pm.test("Status is 200", function() {\n  pm.expect(pm.response.code).to.equal(200);\n});\n`],
+  ['JSON field', `pm.test("Field equals value", function() {\n  var j = pm.response.json();\n  pm.expect(j.field).to.equal("expected");\n});\n`],
+  ['Response time', `pm.test("Response under 500ms", function() {\n  pm.expect(pm.response.responseTime).to.be.below(500);\n});\n`],
+  ['Header present', `pm.test("Content-Type is JSON", function() {\n  pm.expect(pm.response.headers.get("Content-Type")).to.include("application/json");\n});\n`],
+  ['Set env var', `pm.environment.set("token", pm.response.json().token);\n`],
+  ['Get env var', `var token = pm.environment.get("token");\n`],
+  ['Body contains', `pm.test("Body contains string", function() {\n  pm.expect(pm.response.text()).to.include("expected text");\n});\n`],
+];
+
+function renderScriptsTab(reqSpec, scripts, save) {
+  let activeSubTab = S.scriptSubTab || 'tests';
+  const wrap = h('div', {});
+
+  const subTabs = h('div', { class: 'scriptSubTabs' });
+  const renderSub = (key) => {
+    wrap.querySelectorAll('.scriptEditorArea, .scriptSnippets, .note').forEach(el => el.remove());
+    activeSubTab = key;
+    S.scriptSubTab = key;
+    subTabs.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.sub === key));
+
+    const specKey = key === 'tests' ? 'tests' : 'preRequest';
+
+    // Snippets bar.
+    const snippetsBar = h('div', { class: 'scriptSnippets' });
+    PM_SNIPPETS.forEach(([label, code]) => {
+      snippetsBar.append(h('button', { onclick: () => {
+        scripts[specKey] = (scripts[specKey] || '') + code;
+        reqSpec.scripts = { ...scripts };
+        save();
+        renderSub(key);
+      } }, '+ ' + label));
+    });
+
+    const ed = scriptEditor(scripts[specKey] || '', (val) => {
+      scripts[specKey] = val;
+      reqSpec.scripts = { ...scripts };
+      save();
+    });
+    const edArea = h('div', { class: 'scriptEditorArea scriptWrap' }, ed);
+
+    const note = key === 'pre-request'
+      ? h('div', { class: 'note', style: 'margin-top:8px' }, 'Pre-request scripts run before send. Use pm.environment.set() to mutate variables.')
+      : h('div', { class: 'note', style: 'margin-top:8px' }, 'Test scripts run after the response. pm.test() / pm.expect() results appear alongside TOML assertions after Send.');
+
+    wrap.append(snippetsBar, edArea, note);
+  };
+
+  for (const [label, key] of [['Pre-request', 'pre-request'], ['Tests', 'tests']]) {
+    const btn = h('button', { 'data-sub': key, onclick: () => renderSub(key) }, label);
+    if (key === activeSubTab) btn.classList.add('on');
+    subTabs.append(btn);
+  }
+  wrap.append(subTabs);
+  renderSub(activeSubTab);
+  return wrap;
 }
 
 function renderResponse(card) {
@@ -865,9 +1069,14 @@ function renderResponse(card) {
         h('div', {}, `${k.padEnd(8)} `, h('b', {}, tm[k].toFixed(1) + 'ms'),
           h('span', { class: 'bar', style: `width:${Math.max(2, 220 * tm[k] / total)}px` })))));
   }
-  if (r.assertions && r.assertions.length) {
-    card.append(h('div', { id: 'assertChips' }, r.assertions.map(a =>
-      h('span', { class: 'chip ' + (a.passed ? 'ok' : 'bad'), title: a.message }, (a.passed ? '✓ ' : '✕ ') + a.type + ': ' + a.message))));
+  const allTests = [
+    ...(r.assertions || []).map(a => ({ label: a.type + ': ' + a.message, passed: a.passed, src: 'assert' })),
+    ...(r.scriptTests || []).map(t => ({ label: t.name + (t.error ? ': ' + t.error : ''), passed: t.passed, src: 'pm.test' })),
+  ];
+  if (allTests.length) {
+    card.append(h('div', { id: 'assertChips' }, allTests.map(a =>
+      h('span', { class: 'chip ' + (a.passed ? 'ok' : 'bad'), title: a.label },
+        (a.passed ? '✓ ' : '✕ ') + (a.src === 'pm.test' ? '●' : '') + ' ' + a.label))));
   }
 }
 
@@ -990,9 +1199,18 @@ function renderMeta() {
 
 /* ---------- workspace settings ---------- */
 async function renderSettingsView() {
-  let set;
-  try { set = await api('/api/settings'); } catch (e) { toast(e.message, true); return; }
-  const card = settingsCard('Workspace settings', 'Applied to every send from this workspace; stored in relay.db.');
+  let set, xs;
+  try {
+    [set, xs] = await Promise.all([api('/api/settings'), api('/api/xray/settings')]);
+  } catch (e) { toast(e.message, true); return; }
+
+  const work = $('work'); $('meta').hidden = true; work.innerHTML = '';
+  $('crumb').innerHTML = ''; $('crumb').append('Workspace / ', h('b', {}, 'Settings'));
+
+  // — Engine settings card —
+  const card = h('div', { class: 'card', style: 'padding:16px;margin-bottom:14px' });
+  card.append(h('h2', { style: 'margin:0 0 4px;font-family:var(--mono)' }, 'Workspace settings'));
+  card.append(h('div', { style: 'color:var(--dim);margin-bottom:14px' }, 'Applied to every send from this workspace; stored in relay.db.'));
   const save = debounce(async () => {
     try { await api('/api/settings', { method: 'PUT', body: set }); toast('settings saved'); }
     catch (e) { toast(e.message, true); }
@@ -1009,6 +1227,27 @@ async function renderSettingsView() {
   card.append(check('Skip TLS verification', 'insecure', 'for SIT/UAT environments with internal or self-signed certificates — leave off for production'));
   card.append(h('div', { class: 'note', style: 'margin-top:14px' },
     'Secrets are never stored here: environment secrets come from RELAY_SECRET_* process variables.'));
+  work.append(card);
+
+  // — Xray Cloud settings card —
+  const xcard = h('div', { class: 'card', style: 'padding:16px' });
+  xcard.append(h('h2', { style: 'margin:0 0 4px;font-family:var(--mono)' }, 'Xray Cloud (Jira)'));
+  xcard.append(h('div', { style: 'color:var(--dim);margin-bottom:14px' },
+    'Push test execution results to Xray Cloud after a collection run. Credentials are read from environment variables — never stored.'));
+  const saveXray = debounce(async () => {
+    try { await api('/api/xray/settings', { method: 'PUT', body: xs }); toast('Xray settings saved'); }
+    catch (e) { toast(e.message, true); }
+  }, 400);
+  const xrow = (label, key, placeholder) => h('div', { class: 'formRow' }, h('label', {}, label),
+    h('input', { type: 'text', value: xs[key] || '', placeholder,
+      onchange: (e) => { xs[key] = e.target.value; saveXray(); } }));
+  xcard.append(xrow('Project key', 'projectKey', 'AML'));
+  xcard.append(xrow('Test plan key', 'testPlanKey', 'AML-88 (optional)'));
+  xcard.append(xrow('Cloud URL override', 'cloudUrl', 'leave empty for default Xray Cloud'));
+  xcard.append(h('div', { class: 'note', style: 'margin-top:10px' },
+    h('b', {}, 'Credentials: '),
+    'set RELAY_XRAY_CLIENT_ID and RELAY_XRAY_CLIENT_SECRET environment variables before starting relay ui.'));
+  work.append(xcard);
 }
 
 /* ---------- collection & folder settings ---------- */
@@ -1108,12 +1347,28 @@ async function runCollection(col) {
     if (r.error) list.append(h('div', { class: 'runErr' }, r.error));
     for (const a of r.assertions || []) if (!a.passed)
       list.append(h('div', { class: 'runErr' }, `AssertionError (${a.type}): ${a.message}`));
+    for (const t of r.scriptTests || []) if (!t.passed)
+      list.append(h('div', { class: 'runErr' }, `pm.test "${t.name}": ${t.error || 'failed'}`));
   }
+
+  const xrayPushBtn = h('button', { class: 'btn dark', style: 'margin-left:auto',
+    onclick: async () => {
+      xrayPushBtn.disabled = true; xrayPushBtn.textContent = 'Pushing…';
+      try {
+        const r = await api('/api/xray/push', { method: 'POST',
+          body: { collectionId: col.id, env: S.envName } });
+        toast('Pushed to Xray: ' + r.executionKey);
+        xrayPushBtn.textContent = '✓ Pushed: ' + r.executionKey;
+      } catch (e) {
+        toast(e.message, true);
+        xrayPushBtn.textContent = 'Push execution'; xrayPushBtn.disabled = false;
+      }
+    } }, 'Push to Xray');
+
   list.append(h('div', { class: 'xrayCard' },
-    h('b', { style: 'color:var(--fg)' }, 'Push to Xray'),
-    h('span', {}, `Sync these ${out.executed} test results to a Jira Xray execution.`),
-    h('button', { class: 'btn dark', style: 'margin-left:auto', disabled: '' }, 'Push execution'),
-    h('span', { class: 'tag', style: 'font-size:9px;border:1px solid var(--line2);border-radius:99px;padding:0 6px' }, 'phase 3')));
+    h('b', { style: 'color:var(--fg)' }, 'Push to Xray Cloud'),
+    h('span', {}, `Push ${out.executed} test results to a Jira Xray execution. Configure credentials in Settings → Xray.`),
+    xrayPushBtn));
   work.append(list);
 }
 function sumCard(label, value, cls) {
