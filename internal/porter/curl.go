@@ -13,9 +13,8 @@ import (
 func Curl(r *vars.Resolved) string {
 	var parts []string
 	parts = append(parts, "curl")
-	if r.Method != "GET" {
-		parts = append(parts, "-X", r.Method)
-	}
+	parts = append(parts, "--location", "--request", r.Method)
+	parts = append(parts, "--url", shellQuote(r.URL))
 
 	names := make([]string, 0, len(r.Headers))
 	for k := range r.Headers {
@@ -24,14 +23,13 @@ func Curl(r *vars.Resolved) string {
 	sort.Strings(names)
 	for _, k := range names {
 		for _, v := range r.Headers[k] {
-			parts = append(parts, "-H", shellQuote(k+": "+v))
+			parts = append(parts, "--header", shellQuote(k+": "+v))
 		}
 	}
 
 	if len(r.Body) > 0 {
 		parts = append(parts, "--data-raw", shellQuote(string(r.Body)))
 	}
-	parts = append(parts, shellQuote(r.URL))
 	return strings.Join(parts, " ")
 }
 

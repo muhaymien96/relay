@@ -24,6 +24,7 @@ import (
 	"github.com/muhaymien96/relay/internal/engine"
 	"github.com/muhaymien96/relay/internal/porter"
 	"github.com/muhaymien96/relay/internal/runner"
+	"github.com/muhaymien96/relay/internal/script"
 	"github.com/muhaymien96/relay/internal/store"
 	"github.com/muhaymien96/relay/internal/vars"
 )
@@ -269,6 +270,13 @@ type sendResult struct {
 	Size           int64              `json:"size"`
 	Timing         map[string]float64 `json:"timing"`
 	Assertions     []assertionResult  `json:"assertions,omitempty"`
+	ScriptTests    []scriptTestResult `json:"scriptTests,omitempty"`
+}
+
+type scriptTestResult struct {
+	Name   string `json:"name"`
+	Passed bool   `json:"passed"`
+	Error  string `json:"error,omitempty"`
 }
 
 type assertionResult struct {
@@ -351,6 +359,57 @@ func (s *Server) execute(ctx context.Context, req *store.Request, envName string
 		out.Assertions = append(out.Assertions, assertionResult{Type: o.Assertion.Type, Passed: o.Passed, Message: o.Message})
 	}
 
+	if req.Spec.Scripts != nil && strings.TrimSpace(req.Spec.Scripts.Tests) != "" {
+		respHeaders := map[string]string{}
+		for k := range result.Headers {
+			respHeaders[k] = result.Headers.Get(k)
+		}
+
+		envVars := map[string]string{}
+		if envName != "" {
+			if env, err := s.DB.Environment(envName); err == nil {
+				for k, v := range env.Vars {
+					envVars[k] = v
+				}
+			}
+		}
+		colVars := map[string]string{}
+		if col, err := s.DB.Collection(req.CollectionID); err == nil {
+			for k, v := range col.Vars {
+				colVars[k] = v
+			}
+			if req.FolderID != nil {
+				if folder, err := s.DB.Folder(*req.FolderID); err == nil {
+					for k, v := range folder.Vars {
+						colVars[k] = v
+					}
+				}
+			}
+		}
+		reqVars := map[string]string{}
+		for k, v := range req.Spec.Vars {
+			reqVars[k] = v
+		}
+
+		sr := script.RunTests(req.Spec.Scripts.Tests, &script.Scope{
+			Env:        envVars,
+			Collection: colVars,
+			Request:    reqVars,
+		}, &script.Response{
+			Code:       result.Status,
+			Status:     result.StatusText,
+			Headers:    respHeaders,
+			Body:       result.Body,
+			DurationMs: out.Timing["total"],
+		})
+		for _, t := range sr.Tests {
+			out.ScriptTests = append(out.ScriptTests, scriptTestResult{Name: t.Name, Passed: t.Passed, Error: t.Error})
+		}
+		for _, errMsg := range sr.Errors {
+			out.ScriptTests = append(out.ScriptTests, scriptTestResult{Name: "Script runtime", Passed: false, Error: errMsg})
+		}
+	}
+
 	if record {
 		_ = s.DB.AddHistory(&store.HistoryEntry{
 			RequestID:   &req.ID,
@@ -378,6 +437,7 @@ type runResult struct {
 	Passed     bool              `json:"passed"`
 	Error      string            `json:"error,omitempty"`
 	Assertions []assertionResult `json:"assertions,omitempty"`
+	ScriptTests []scriptTestResult `json:"scriptTests,omitempty"`
 }
 
 func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
@@ -410,9 +470,15 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 			rr.Status = out.Status
 			rr.DurationMs = out.Timing["total"]
 			rr.Assertions = out.Assertions
+			rr.ScriptTests = out.ScriptTests
 			rr.Passed = true
 			for _, a := range out.Assertions {
 				if !a.Passed {
+					rr.Passed = false
+				}
+			}
+			for _, t := range out.ScriptTests {
+				if !t.Passed {
 					rr.Passed = false
 				}
 			}
@@ -521,6 +587,38 @@ func (s *Server) handleImportCurl(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	format := r.URL.Query().Get("format")
+	if format == "curl" {
+		reqID, err := atoi64(r.URL.Query().Get("request"))
+		if err != nil {
+			httpError(w, 400, fmt.Errorf("request query param required for curl export"))
+			return
+		}
+		req, err := s.DB.Request(reqID)
+		if err != nil {
+			httpError(w, 404, fmt.Errorf("request %d not found", reqID))
+			return
+		}
+		resolved, scope, presetSecrets, err := s.resolveStored(req, r.URL.Query().Get("env"))
+		if err != nil {
+			httpError(w, 422, err)
+			return
+		}
+		cmd := porter.Curl(resolved)
+		for name, value := range scope.SecretValues() {
+			if value != "" {
+				cmd = strings.ReplaceAll(cmd, value, `'$`+vars.SecretEnvVar(name)+`'`)
+			}
+		}
+		for _, value := range presetSecrets {
+			if value != "" {
+				cmd = strings.ReplaceAll(cmd, value, "••••••")
+			}
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		_, _ = w.Write([]byte(cmd))
+		return
+	}
+
 	colID, err := atoi64(r.URL.Query().Get("collection"))
 	if err != nil {
 		httpError(w, 400, fmt.Errorf("collection query param required"))
@@ -564,7 +662,7 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 		out, err = porter.ExportOpenAPI(dir)
 		script, contentType = string(out), "application/json"
 	default:
-		httpError(w, 400, fmt.Errorf("format must be k6, playwright, postman or openapi"))
+		httpError(w, 400, fmt.Errorf("format must be curl, k6, playwright, postman or openapi"))
 		return
 	}
 	if err != nil {

@@ -99,6 +99,97 @@ func TestParseCurlRoundTrip(t *testing.T) {
 	}
 }
 
+func TestParseCurlPostmanStyle(t *testing.T) {
+	cmd := `curl --location --request POST --url 'https://x.test/v1/do?x=a b' --header 'Content-Type: application/json' --header 'Authorization: Bearer token123' --data-raw '{"a":1}'`
+	req, err := ParseCurl(cmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.Method != "POST" || req.URL != "https://x.test/v1/do?x=a b" {
+		t.Fatalf("method/url = %s %s", req.Method, req.URL)
+	}
+	if req.Auth == nil || req.Auth.Type != "bearer" || req.Auth.Token != "token123" {
+		t.Fatalf("auth = %+v", req.Auth)
+	}
+	if req.Body == nil || req.Body.Type != "json" || req.Body.Content != `{"a":1}` {
+		t.Fatalf("body = %+v", req.Body)
+	}
+}
+
+func TestParseCurlUserInsuranceSample(t *testing.T) {
+	cmd := `curl --location 'https://dev.nonprod.agw.qa.omapps.net/insurance/life/party/aml/certify/v2/person' \
+--header 'X-IBM-Client-Id: 165239a3-1596-4ff8-9239-a315967ff8e3' \
+--header 'useCache: true' \
+--data '{
+    "SourceSystem": "IOP",
+    "User": "x525719",
+    "IdentityNumber": "8202250196080",
+    "FirstName": "HELGADIA",
+    "LastName": "KLEIN-SMIT",
+    "AddressLine1": "121 EAGLE STREET",
+    "AddressLine2": "PESCODIA",
+    "AddressLine3": "KIMBERLEY",
+    "PostalCode": "8309"
+}'`
+
+	req, err := ParseCurl(cmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.URL != "https://dev.nonprod.agw.qa.omapps.net/insurance/life/party/aml/certify/v2/person" {
+		t.Fatalf("url = %q", req.URL)
+	}
+	if req.Method != "POST" {
+		t.Fatalf("method = %q", req.Method)
+	}
+	if req.Headers["X-IBM-Client-Id"] != "165239a3-1596-4ff8-9239-a315967ff8e3" {
+		t.Fatalf("X-IBM-Client-Id header = %q", req.Headers["X-IBM-Client-Id"])
+	}
+	if req.Headers["useCache"] != "true" {
+		t.Fatalf("useCache header = %q", req.Headers["useCache"])
+	}
+	if req.Body == nil {
+		t.Fatal("body is nil")
+	}
+	if req.Body.Type != "json" {
+		t.Fatalf("body type = %q", req.Body.Type)
+	}
+	if !strings.Contains(req.Body.Content, `"IdentityNumber": "8202250196080"`) {
+		t.Fatalf("body content not imported correctly: %s", req.Body.Content)
+	}
+}
+
+func TestParseCurlWithTerminalPrefix(t *testing.T) {
+	cmd := `PS C:\Apps\relay> curl --location 'https://x.test/v1/do' --header 'Content-Type: application/json' --data '{"a":1}'`
+	req, err := ParseCurl(cmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.Method != "POST" || req.URL != "https://x.test/v1/do" {
+		t.Fatalf("method/url = %s %s", req.Method, req.URL)
+	}
+	if req.Body == nil || req.Body.Type != "json" {
+		t.Fatalf("body = %+v", req.Body)
+	}
+}
+
+func TestParseCurlWindowsCaretContinuation(t *testing.T) {
+	cmd := "curl --location 'https://x.test/v1/do' ^\n--header 'X-IBM-Client-Id: abc' ^\n--data '{\"a\":1}'"
+	req, err := ParseCurl(cmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.Method != "POST" {
+		t.Fatalf("method = %q", req.Method)
+	}
+	if req.Headers["X-IBM-Client-Id"] != "abc" {
+		t.Fatalf("headers = %+v", req.Headers)
+	}
+	if req.Body == nil || req.Body.Content != `{"a":1}` {
+		t.Fatalf("body = %+v", req.Body)
+	}
+}
+
 func TestExportPostmanRoundTrip(t *testing.T) {
 	root := exportWorkspace(t) // collection.toml + root request + verify/ folder
 	out, err := ExportPostman(root)

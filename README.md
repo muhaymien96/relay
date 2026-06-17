@@ -218,6 +218,12 @@ that's SmartScreen reacting to an unsigned download — see
 (More info → Run anyway), checksum verification, and how to set up code
 signing for a permanent fix.
 
+## UI Usage Guide
+
+For day-to-day API client usage (requests, folders, assertions, scripts, and
+environment variables in URL/headers/body), see
+[docs/API_CLIENT_GUIDE.md](docs/API_CLIENT_GUIDE.md).
+
 ## Project docs
 
 - [Product Requirements (PRD)](docs/PRD.md)

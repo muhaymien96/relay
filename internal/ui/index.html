@@ -67,7 +67,8 @@
   .reqRow.on { background: var(--ink-soft); outline: 1px dashed var(--ink); }
   .reqRow .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .folderRow { display: flex; align-items: center; gap: 6px; padding: 5px 8px 5px 18px; color: var(--dim);
-               font-weight: 600; }
+               font-weight: 600; transition: background .15s; }
+  .folderRow.drag-over { background: var(--hover); color: var(--fg); }
   .method { font-family: var(--mono); font-size: 9.5px; font-weight: 700; letter-spacing: .03em; }
   .m-GET { color: var(--green); } .m-POST { color: var(--amber); } .m-PUT { color: var(--blue); }
   .m-PATCH { color: var(--purple); } .m-DELETE { color: var(--red); }
@@ -90,6 +91,8 @@
   .btn:hover { border-color: var(--ink); color: var(--ink); }
   .btn.dark { background: var(--ink); border-color: var(--ink); color: #fff; }
   .btn.dark:hover { background: var(--ink-hover); }
+  .btn.danger { background: var(--red); border-color: var(--red); color: #fff; }
+  .btn.danger:hover { background: #b83030; border-color: #b83030; }
   .btn:disabled { opacity: .5; pointer-events: none; }
   #content { flex: 1; display: flex; min-height: 0; }
   #work { flex: 1; display: flex; flex-direction: column; min-width: 0; padding: 16px 18px; gap: 14px;
@@ -169,13 +172,18 @@
     border: 0; padding: 12px 12px 12px 52px; font: inherit; resize: vertical;
     background: transparent; color: transparent; caret-color: var(--fg);
     outline: none; z-index: 2; white-space: pre; overflow-wrap: normal; overflow-x: auto;
-    line-height: 1.6; spellcheck: false;
+    line-height: 1.6;
   }
   .scriptHighlight {
     position: absolute; inset: 0; padding: 12px 12px 12px 52px;
     font: inherit; pointer-events: none; white-space: pre; overflow: auto;
     line-height: 1.6; color: var(--fg); z-index: 1; background: #f8f9fe;
   }
+  .json-k { color: #d73a49; font-weight: 600; }
+  .json-s { color: #032f62; }
+  .json-n { color: #005cc5; }
+  .json-b { color: #d73a49; }
+  .json-null { color: #d73a49; }
   .scriptLineNums {
     position: absolute; left: 0; top: 0; width: 44px; padding: 12px 8px;
     text-align: right; font: inherit; color: var(--faint); line-height: 1.6;
@@ -252,6 +260,38 @@
   .chips .att.on { background: var(--ink-soft); border-color: var(--ink); color: var(--ink); }
   .note { background: #f1f2f9; border-radius: 7px; padding: 9px 12px; color: var(--dim); font-style: italic; }
   .empty { color: var(--dim); padding: 40px; text-align: center; }
+
+  /* ---- context menu ---- */
+  #ctxMenu { position: fixed; z-index: 9999; background: var(--panel); border: 1px solid var(--line2);
+             border-radius: 10px; padding: 4px; min-width: 180px; display: none;
+             box-shadow: 0 8px 24px rgba(0,0,0,.12), 0 2px 6px rgba(0,0,0,.08); }
+  #ctxMenu.open { display: block; }
+  .ctxItem { display: flex; align-items: center; gap: 9px; padding: 7px 12px; border-radius: 7px;
+             cursor: pointer; font-size: 13px; color: var(--fg); border: 0; background: none;
+             width: 100%; text-align: left; white-space: nowrap; }
+  .ctxItem:hover { background: var(--ink-soft); color: var(--ink); }
+  .ctxItem.danger:hover { background: #fdecec; color: var(--red); }
+  .ctxItem .ctxIco { width: 16px; text-align: center; flex: none; }
+  .ctxSep { height: 1px; background: var(--line); margin: 4px 0; }
+
+  /* ---- modal dialogs ---- */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(28,31,51,.5); z-index: 8000;
+                   display: none; align-items: center; justify-content: center; }
+  .modal-overlay.open { display: flex; }
+  .modal-box { background: var(--panel); border: 1px solid var(--line2); border-radius: var(--radius);
+               padding: 24px; min-width: 340px; max-width: 460px; width: calc(100% - 32px);
+               box-shadow: 0 16px 48px rgba(0,0,0,.18); }
+  .modal-title { font-weight: 700; font-size: 15px; margin: 0 0 12px; }
+  .modal-msg { color: var(--fg); margin: 0 0 20px; line-height: 1.5; }
+  #modalInput { width: 100%; margin-bottom: 18px; }
+  #modalInputArea { width: 100%; min-height: 220px; margin-bottom: 18px; resize: vertical; font-family: var(--mono); }
+  .modal-choices { display: flex; flex-direction: column; gap: 5px; margin-bottom: 18px; }
+  .modal-choice { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border: 1px solid var(--line2);
+                  border-radius: 8px; cursor: pointer; background: #fff; text-align: left; width: 100%; font-size: 13px; }
+  .modal-choice:hover { border-color: var(--ink); background: var(--ink-soft); color: var(--ink); }
+  .modal-choice.on { border-color: var(--ink); background: var(--ink-soft); color: var(--ink); font-weight: 600; }
+  .modal-hint { margin-left: auto; font-size: 11px; color: var(--faint); font-weight: 400; }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; padding-top: 4px; }
 </style>
 </head>
 <body>
@@ -287,6 +327,20 @@
     </div>
   </div>
 </div>
+<div id="modal" class="modal-overlay">
+  <div class="modal-box">
+    <p id="modalTitle" class="modal-title" hidden></p>
+    <p id="modalMsg" class="modal-msg" hidden></p>
+    <input id="modalInput" type="text" hidden>
+    <textarea id="modalInputArea" hidden></textarea>
+    <div id="modalChoices" class="modal-choices" hidden></div>
+    <div class="modal-actions">
+      <button id="modalCancel" class="btn">Cancel</button>
+      <button id="modalOk" class="btn dark">OK</button>
+    </div>
+  </div>
+</div>
+<div id="ctxMenu"></div>
 <div id="statusbar"><span><span class="dot"></span>AGENT ONLINE</span><span>relay 0.2.0</span><span id="dbinfo">sqlite</span></div>
 <div id="toast"></div>
 <input type="file" id="importFile" accept=".json" hidden>
@@ -295,10 +349,13 @@
 'use strict';
 const $ = (id) => document.getElementById(id);
 const h = (tag, attrs = {}, ...kids) => {
+
   const el = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
     if (k === 'class') el.className = v;
     else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
+    else if (k === 'value') el.value = v;
+    else if (k === 'checked') el.checked = !!v;
     else if (v !== undefined && v !== null) el.setAttribute(k, v);
   }
   for (const k of kids.flat()) el.append(k);
@@ -307,12 +364,118 @@ const h = (tag, attrs = {}, ...kids) => {
 const esc = (s) => String(s ?? '');
 const METHODS = ['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS'];
 
+/* ---------- context menu ---------- */
+const ctxMenu = {
+  el: null,
+  init() { this.el = $('ctxMenu'); document.addEventListener('click', () => this.close()); document.addEventListener('keydown', e => { if (e.key === 'Escape') this.close(); }); },
+  close() { this.el.classList.remove('open'); this.el.innerHTML = ''; },
+  show(x, y, items) {
+    this.el.innerHTML = '';
+    for (const item of items) {
+      if (item === '-') { this.el.append(h('div', { class: 'ctxSep' })); continue; }
+      const btn = h('button', { class: 'ctxItem' + (item.danger ? ' danger' : ''), onclick: () => { this.close(); item.action(); } },
+        h('span', { class: 'ctxIco' }, item.icon || ''),
+        item.label);
+      this.el.append(btn);
+    }
+    // Position: keep menu within viewport.
+    this.el.style.left = '0'; this.el.style.top = '0';
+    this.el.classList.add('open');
+    const rect = this.el.getBoundingClientRect();
+    const vw = window.innerWidth, vh = window.innerHeight;
+    this.el.style.left = Math.min(x, vw - rect.width - 6) + 'px';
+    this.el.style.top  = Math.min(y, vh - rect.height - 6) + 'px';
+  },
+};
+
+/* ---------- modal dialogs ---------- */
+const modal = {
+  _res: null, _mode: 'confirm', _multiline: false,
+  init() {
+    $('modalCancel').onclick = () => this._done(null);
+    $('modalOk').onclick = () => this._submit();
+    $('modal').addEventListener('click', e => { if (e.target === $('modal')) this._done(null); });
+    document.addEventListener('keydown', e => {
+      if (!$('modal').classList.contains('open')) return;
+      if (e.key === 'Escape') { e.preventDefault(); this._done(null); }
+    });
+    $('modalInput').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); this._submit(); } });
+    $('modalInputArea').addEventListener('keydown', e => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        this._submit();
+      }
+    });
+  },
+  _done(val) { $('modal').classList.remove('open'); if (this._res) { this._res(val); this._res = null; } },
+  _submit() {
+    if (this._mode === 'prompt') {
+      const src = this._multiline ? $('modalInputArea') : $('modalInput');
+      const v = src.value.trim(); this._done(v || null);
+    } else if (this._mode === 'pick') {
+      const s = $('modalChoices').querySelector('.modal-choice.on'); this._done(s ? s.dataset.value : null);
+    } else {
+      this._done(true);
+    }
+  },
+  _base() {
+    $('modalTitle').hidden = true; $('modalMsg').hidden = true;
+    $('modalInput').hidden = true; $('modalInput').value = '';
+    $('modalInputArea').hidden = true; $('modalInputArea').value = '';
+    this._multiline = false;
+    $('modalChoices').hidden = true; $('modalChoices').innerHTML = '';
+    $('modal').classList.add('open');
+  },
+  confirm(msg, { danger = false, ok = 'Confirm' } = {}) {
+    return new Promise(res => {
+      this._res = res; this._mode = 'confirm'; this._base();
+      $('modalMsg').textContent = msg; $('modalMsg').hidden = false;
+      const btn = $('modalOk'); btn.textContent = ok; btn.className = 'btn ' + (danger ? 'danger' : 'dark');
+    });
+  },
+  prompt(label, { placeholder = '', value = '', ok = 'OK', multiline = false } = {}) {
+    return new Promise(res => {
+      this._res = res; this._mode = 'prompt'; this._base();
+      $('modalTitle').textContent = label; $('modalTitle').hidden = false;
+      this._multiline = multiline;
+      const inp = multiline ? $('modalInputArea') : $('modalInput');
+      inp.hidden = false; inp.placeholder = placeholder; inp.value = value;
+      $('modalOk').textContent = ok; $('modalOk').className = 'btn dark';
+      setTimeout(() => { inp.focus(); if (value) inp.select(); }, 30);
+    });
+  },
+  pick(title, options) {
+    return new Promise(res => {
+      this._res = res; this._mode = 'pick'; this._base();
+      $('modalTitle').textContent = title; $('modalTitle').hidden = false;
+      const wrap = $('modalChoices'); wrap.hidden = false;
+      options.forEach((opt, i) => {
+        const btn = h('button', {
+          class: 'modal-choice' + (i === 0 ? ' on' : ''), 'data-value': opt.value,
+          onclick: e => { wrap.querySelectorAll('.modal-choice').forEach(b => b.classList.remove('on')); e.currentTarget.classList.add('on'); },
+          ondblclick: () => this._submit(),
+        }, opt.label, ...(opt.hint ? [h('span', { class: 'modal-hint' }, opt.hint)] : []));
+        wrap.append(btn);
+      });
+      $('modalOk').textContent = 'Select'; $('modalOk').className = 'btn dark';
+    });
+  },
+};
+
 const S = {
   view: 'collections', state: { collections: [], environments: [], presets: [] },
   openCols: new Set(), reqId: null, req: null, tab: 'headers',
   last: null, run: null, presetId: null, envName: localStorage.envName || '',
-  history: [],
+  history: [], reqDirty: false,
 };
+
+function setReqDirty(v) {
+  S.reqDirty = !!v;
+  const b = $('saveReqBtn');
+  if (!b) return;
+  b.textContent = S.reqDirty ? 'Save *' : 'Save';
+  b.classList.toggle('dark', S.reqDirty);
+}
 
 async function api(url, opts = {}) {
   if (opts.body && typeof opts.body !== 'string') {
@@ -344,7 +507,8 @@ function findReqMeta(id) {
 }
 
 /* ---------- nav + side panel ---------- */
-document.querySelectorAll('.navItem[data-view]').forEach(b => b.onclick = () => {
+document.querySelectorAll('.navItem[data-view]').forEach(b => b.onclick = async () => {
+  if (S.reqDirty && S.req) await saveRequest();
   S.view = b.dataset.view;
   document.querySelectorAll('.navItem').forEach(x => x.classList.toggle('on', x === b));
   renderSide();
@@ -365,32 +529,69 @@ function renderSide() {
   if (S.view === 'collections') {
     for (const c of S.state.collections || []) {
       const open = S.openCols.has(c.id);
-      list.append(h('div', { class: 'colRow', onclick: () => { open ? S.openCols.delete(c.id) : S.openCols.add(c.id); renderSide(); } },
+      list.append(h('div', { class: 'colRow',
+        onclick: () => { open ? S.openCols.delete(c.id) : S.openCols.add(c.id); renderSide(); },
+        oncontextmenu: (e) => { e.preventDefault(); e.stopPropagation(); showColCtx(e, c); },
+      },
+
         h('span', { class: 'car' }, open ? '▾' : '▸'), '🗀 ', c.name,
         h('button', { class: 'runBtn', title: 'Run collection', onclick: (e) => { e.stopPropagation(); runCollection(c); } }, '▶'),
         h('button', { class: 'runBtn', title: 'Collection settings', onclick: (e) => { e.stopPropagation(); renderCollectionSettings(c); } }, '⚙'),
         h('button', { class: 'runBtn', title: 'Delete collection', onclick: async (e) => {
           e.stopPropagation();
-          if (!confirm(`Delete collection "${c.name}" and all its requests?`)) return;
+          if (!await modal.confirm(`Delete "${c.name}" and all its requests?`, { danger: true, ok: 'Delete' })) return;
           try {
             await api('/api/collections/' + c.id, { method: 'DELETE' });
             if (S.reqId && findReqMeta(S.reqId)?.col.id === c.id) { S.reqId = null; S.req = null; $('work').innerHTML = '<div class="empty">Select a request, or create one.</div>'; $('meta').hidden = true; }
             await refresh();
           } catch (err) { toast(err.message, true); }
         } }, '✕')));
+
       if (!open) continue;
       const byFolder = (fid) => c.requests.filter(q => String(q.folderId) === String(fid));
       for (const q of byFolder(null)) list.append(reqRow(q));
       for (const f of c.folders) {
-        list.append(h('div', { class: 'folderRow' }, '🗀 ', f.name,
+        list.append(h('div', {
+          class: 'folderRow',
+          ondragover: (e) => { e.preventDefault(); e.currentTarget.classList.add('drag-over'); },
+          ondragleave: (e) => { e.currentTarget.classList.remove('drag-over'); },
+          ondrop: async (e) => {
+            e.preventDefault();
+            e.currentTarget.classList.remove('drag-over');
+            const reqId = e.dataTransfer.getData('requestId');
+            if (reqId) {
+              try {
+                const r = await api('/api/requests/' + reqId);
+                r.folderId = f.id;
+                await api('/api/requests/' + reqId, { method: 'PUT', body: r });
+                await refresh();
+                renderSide();
+                toast('Request moved to folder');
+              } catch (err) { toast(err.message, true); }
+            }
+          },
+          oncontextmenu: (e) => { e.preventDefault(); e.stopPropagation(); showFolderCtx(e, f, c); }
+        }, '🗀 ', f.name,
           h('button', { class: 'runBtn', title: 'Folder settings', style: 'margin-left:auto',
             onclick: (e) => { e.stopPropagation(); renderFolderSettings(f, c); } }, '⚙')));
-        for (const q of byFolder(f.id)) list.append(reqRow(q));
+        const folderReqs = byFolder(f.id);
+        if (!folderReqs.length) {
+          list.append(h('div', {
+            class: 'reqRow',
+            style: 'opacity:.65;font-style:italic',
+            oncontextmenu: (e) => { e.preventDefault(); e.stopPropagation(); showFolderCtx(e, f, c); },
+          }, h('span', { class: 'nm' }, '(empty folder)')));
+        }
+        for (const q of folderReqs) list.append(reqRow(q));
       }
     }
   } else if (S.view === 'history') {
     for (const e of S.history) {
-      list.append(h('div', { class: 'histRow', onclick: () => showHistory(e.id) },
+      list.append(h('div', {
+        class: 'histRow',
+        onclick: () => showHistory(e.id),
+        oncontextmenu: (ev) => { ev.preventDefault(); ev.stopPropagation(); showHistCtx(ev, e); },
+      },
         h('span', { class: 'method m-' + e.method }, e.method + ' '),
         esc(e.requestName),
         h('small', {}, ` — ${e.status} · ${e.durationMs.toFixed(0)}ms`)));
@@ -637,21 +838,143 @@ async function runTest(full) {
   finally { if (btn) btn.disabled = false; }
 }
 function reqRow(q) {
-  return h('div', { class: 'reqRow' + (q.id === S.reqId ? ' on' : ''), onclick: () => openRequest(q.id) },
+  return h('div', {
+    class: 'reqRow' + (q.id === S.reqId ? ' on' : ''),
+    draggable: 'true',
+    ondragstart: (e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('requestId', q.id); },
+    ondragend: () => document.querySelectorAll('.folderRow.drag-over').forEach(el => el.classList.remove('drag-over')),
+    onclick: () => openRequest(q.id),
+    oncontextmenu: (e) => { e.preventDefault(); e.stopPropagation(); openRequest(q.id).then(() => showReqCtx(e, q)); },
+  },
     h('span', { class: 'method m-' + q.method }, q.method),
     h('span', { class: 'nm' }, q.name));
+}
+
+function showFolderCtx(e, f, c) {
+  ctxMenu.show(e.clientX, e.clientY, [
+    { icon: '+', label: 'New request in folder', action: async () => {
+      try {
+        const created = await api('/api/requests', { method: 'POST',
+          body: {
+            collectionId: c.id,
+            folderId: f.id,
+            spec: { name: 'Untitled', method: 'GET', url: 'https://' },
+          },
+        });
+        S.openCols.add(c.id);
+        await refresh();
+        openRequest(created.id);
+        toast('Request created in folder');
+      } catch (err) { toast(err.message, true); }
+    }},
+    '-',
+    { icon: '▶', label: 'Run folder', action: async () => {
+      try {
+        const reqs = c.requests.filter(q => String(q.folderId) === String(f.id));
+        if (!reqs.length) {
+          toast('Folder is empty');
+          return;
+        }
+        const result = { passed: 0, failed: 0, duration: 0 };
+        for (const q of reqs) {
+          try {
+            const r = await api('/api/send', { method: 'POST', body: { requestId: q.id, env: S.envName } });
+            const assertOk = (r.assertions || []).every(a => a.passed);
+            const scriptOk = (r.scriptTests || []).every(t => t.passed);
+            if (assertOk && scriptOk) result.passed++; else result.failed++;
+            result.duration += r.timing.total;
+          } catch { result.failed++; }
+        }
+        toast(`Folder run: ${result.passed}/${reqs.length} passed`);
+      } catch (err) { toast(err.message, true); }
+    }},
+    { icon: '✎', label: 'Rename folder', action: async () => {
+      const name = await modal.prompt('New folder name', { value: f.name }); if (!name) return;
+      try {
+        f.name = name;
+        await api('/api/folders/' + f.id, { method: 'PATCH', body: f });
+        await refresh();
+        renderSide();
+        toast('Folder renamed');
+      } catch (err) { toast(err.message, true); }
+    }},
+    '-',
+    { icon: '🗑', label: 'Delete folder', danger: true, action: async () => {
+      if (!await modal.confirm(`Delete "${f.name}" folder?`, { danger: true, ok: 'Delete' })) return;
+      try {
+        await api('/api/folders/' + f.id, { method: 'DELETE' });
+        await refresh();
+        renderSide();
+        toast('Folder deleted');
+      } catch (err) { toast(err.message, true); }
+    }},
+  ]);
+}
+
+async function showReqCtx(e, q) {
+  const meta = findReqMeta(q.id);
+  ctxMenu.show(e.clientX, e.clientY, [
+    { icon: '↗', label: 'Open', action: () => openRequest(q.id) },
+    { icon: '⧉', label: 'Duplicate', action: async () => {
+      try {
+        const src = await api('/api/requests/' + q.id);
+        const created = await api('/api/requests', { method: 'POST',
+          body: { collectionId: src.collectionId, folderId: src.folderId,
+                  spec: { ...src.spec, name: src.spec.name + ' (copy)' } } });
+        await refresh(); S.openCols.add(src.collectionId); renderSide(); openRequest(created.id);
+        toast('Request duplicated');
+      } catch (err) { toast(err.message, true); }
+    }},
+    { icon: '✎', label: 'Rename', action: async () => {
+      const name = await modal.prompt('Rename request', { value: q.name }); if (!name) return;
+      if (S.req && S.req.id === q.id) { S.req.spec.name = name; saveRequest(); }
+      else api('/api/requests/' + q.id, { method: 'PUT', body: { spec: { ...q, name } } })
+        .then(() => refresh()).catch(err => toast(err.message, true));
+    }},
+    { icon: '⧉', label: 'Copy as curl', action: async () => {
+      try {
+        const out = await api(`/api/requests/${q.id}/curl?env=${encodeURIComponent(S.envName)}`);
+        await copyText(out.curl, 'curl command');
+      } catch (err) { toast(err.message, true); }
+    }},
+    '-',
+    ...(meta && meta.col.folders.length ? [{ icon: '🗀', label: 'Move to folder…', action: async () => {
+      const folderOpts = [
+        { value: 'root', label: '(collection root)' },
+        ...meta.col.folders.map(f => ({ value: String(f.id), label: f.name })),
+      ];
+      const choice = await modal.pick('Move to folder', folderOpts);
+      if (choice === null) return;
+      const fid = choice === 'root' ? null : parseInt(choice, 10);
+      try {
+        const r = await api('/api/requests/' + q.id);
+        r.folderId = fid;
+        await api('/api/requests/' + q.id, { method: 'PUT', body: r });
+        await refresh(); toast('Moved');
+      } catch (err) { toast(err.message, true); }
+    }}] : []),
+    '-',
+    { icon: '🗑', label: 'Delete', danger: true, action: async () => {
+      if (!await modal.confirm(`Delete "${q.name}"?`, { danger: true, ok: 'Delete' })) return;
+      try {
+        await api('/api/requests/' + q.id, { method: 'DELETE' });
+        if (S.reqId === q.id) { S.reqId = null; S.req = null; $('work').innerHTML = '<div class="empty">Select a request, or create one.</div>'; $('meta').hidden = true; }
+        await refresh();
+      } catch (err) { toast(err.message, true); }
+    }},
+  ]);
 }
 
 $('sideAdd').onclick = async () => {
   try {
     if (S.view === 'collections') {
-      const name = prompt('New collection name'); if (!name) return;
+      const name = await modal.prompt('New collection name'); if (!name) return;
       await api('/api/collections', { method: 'POST', body: { name, headers: {}, vars: {} } });
     } else if (S.view === 'environments') {
-      const name = prompt('New environment name'); if (!name) return;
+      const name = await modal.prompt('New environment name'); if (!name) return;
       await api('/api/environments/' + encodeURIComponent(name), { method: 'PUT', body: { vars: {}, secrets: [] } });
     } else if (S.view === 'presets') {
-      const name = prompt('New preset name'); if (!name) return;
+      const name = await modal.prompt('New preset name'); if (!name) return;
       await api('/api/presets', { method: 'POST', body: { name, description: '', headers: [], attachments: [] } });
     }
     await refresh();
@@ -666,11 +989,7 @@ $('newReq').onclick = async () => {
       await api('/api/collections', { method: 'POST', body: { name: 'My Collection', headers: {}, vars: {} } });
       await refresh(); col = S.state.collections[0];
     }
-    const created = await api('/api/requests', { method: 'POST',
-      body: { collectionId: col.id, spec: { name: 'Untitled', method: 'GET', url: 'https://' } } });
-    S.openCols.add(col.id);
-    await refresh();
-    openRequest(created.id);
+    await createRequestInCollection(col.id);
   } catch (e) { toast(e.message, true); }
 };
 
@@ -683,32 +1002,33 @@ function renderEnvSel() {
 $('envSel').onchange = () => { S.envName = $('envSel').value; localStorage.envName = S.envName; };
 
 $('importBtn').onclick = async () => {
-  const choice = prompt('Import from:\n  1 — Postman collection JSON\n  2 — OpenAPI 3.x spec JSON\n  3 — Paste a curl command\n\nEnter 1, 2, 3 or paste curl directly:');
-  if (choice === null) return;
-  const trimmed = choice.trim();
-  if (trimmed === '1' || trimmed === '') {
-    $('importFile').dataset.mode = 'postman';
-    $('importFile').click();
+  const fmt = await modal.pick('Import', [
+    { value: 'postman', label: 'Postman collection JSON', hint: '.json file' },
+    { value: 'openapi', label: 'OpenAPI 3.x spec JSON', hint: '.json file' },
+    { value: 'curl', label: 'curl command', hint: 'paste text' },
+  ]);
+  if (!fmt) return;
+  if (fmt === 'curl') {
+    const curlCmd = await modal.prompt('Paste curl command', {
+      placeholder: 'curl --location ...',
+      multiline: true,
+      ok: 'Import curl',
+    });
+    if (!curlCmd) return;
+    try {
+      const current = S.reqId && findReqMeta(S.reqId);
+      const created = await api('/api/import/curl', { method: 'POST',
+        body: { collectionId: current ? current.col.id : (S.state.collections[0]?.id || 0), curl: curlCmd.trim() } });
+      toast('curl imported');
+      await refresh();
+      S.openCols.add(created.collectionId);
+      renderSide();
+      openRequest(created.id);
+    } catch (e) { toast(e.message, true); }
     return;
   }
-  if (trimmed === '2') {
-    $('importFile').dataset.mode = 'openapi';
-    $('importFile').click();
-    return;
-  }
-  // curl command (3 or any curl string)
-  const curlCmd = trimmed === '3' ? prompt('Paste curl command:') : trimmed;
-  if (!curlCmd) return;
-  try {
-    const current = S.reqId && findReqMeta(S.reqId);
-    const created = await api('/api/import/curl', { method: 'POST',
-      body: { collectionId: current ? current.col.id : (S.state.collections[0]?.id || 0), curl: curlCmd.trim() } });
-    toast('curl imported');
-    await refresh();
-    S.openCols.add(created.collectionId);
-    renderSide();
-    openRequest(created.id);
-  } catch (e) { toast(e.message, true); }
+  $('importFile').dataset.mode = fmt;
+  $('importFile').click();
 };
 $('importFile').onchange = async () => {
   const f = $('importFile').files[0]; if (!f) return;
@@ -729,11 +1049,22 @@ $('exportBtn').onclick = async () => {
   const meta = S.reqId && findReqMeta(S.reqId);
   const col = meta ? meta.col : S.state.collections[0];
   if (!col) return toast('No collection to export', true);
-  const format = prompt('Export format:\n  postman — Postman Collection v2.1\n  openapi — OpenAPI 3.x spec\n  k6 — k6 load test script\n  playwright — Playwright API test\n\nEnter format:', 'postman');
+  const hasReq = !!(S.req && S.req.id);
+  const format = await modal.pick('Export format', [
+    ...(hasReq ? [{ value: 'curl', label: 'curl command (current request)' }] : []),
+    { value: 'postman', label: 'Postman Collection v2.1' },
+    { value: 'openapi', label: 'OpenAPI 3.x spec' },
+    { value: 'k6', label: 'k6 load test script' },
+    { value: 'playwright', label: 'Playwright API test' },
+  ]);
   if (!format) return;
   try {
-    const text = await api(`/api/export?format=${encodeURIComponent(format)}&collection=${col.id}&env=${encodeURIComponent(S.envName)}`);
+    const q = format === 'curl'
+      ? `format=curl&request=${S.req.id}&env=${encodeURIComponent(S.envName)}`
+      : `format=${encodeURIComponent(format)}&collection=${col.id}&env=${encodeURIComponent(S.envName)}`;
+    const text = await api(`/api/export?${q}`);
     const names = {
+      curl: slugify((S.req && S.req.spec && S.req.spec.name) || 'request') + '.curl.sh',
       k6: 'load.js', playwright: 'api.spec.ts',
       postman: slugify(col.name) + '.postman_collection.json',
       openapi: slugify(col.name) + '.openapi.json',
@@ -749,6 +1080,7 @@ $('exportBtn').onclick = async () => {
 /* ---------- request workbench ---------- */
 async function openRequest(id) {
   try {
+    if (S.reqDirty && S.req && S.reqId !== id) await saveRequest();
     const r = await api('/api/requests/' + id);
     S.reqId = id; S.req = r; S.last = null;
     renderSide(); renderRequest();
@@ -814,19 +1146,24 @@ function renderRequest() {
   $('crumb').append('Workspace / ', h('b', {}, meta ? meta.col.name : ''), ' / ', spec.name);
 
   const work = $('work'); work.innerHTML = '';
-  const save = debounce(saveRequest, 500);
+  const save = debounce(async () => { await saveRequest(); }, 500);
+
+  setReqDirty(false);
 
   const editor = h('div', { class: 'card' },
     h('div', { style: 'padding:12px 12px 0;display:flex;align-items:center;gap:8px' },
-      h('input', { id: 'reqName', value: spec.name, onchange: (e) => { spec.name = e.target.value; save(); } }),
+      h('input', { id: 'reqName', value: spec.name, onchange: (e) => { spec.name = e.target.value; setReqDirty(true); save(); } }),
+      h('button', { class: 'iconBtn', id: 'saveReqBtn', title: 'Save request now', onclick: () => saveRequest(true) }, 'Save'),
       h('button', { class: 'iconBtn', title: 'Delete request', onclick: deleteRequest }, '🗑')),
     h('div', { id: 'urlRow' },
-      h('select', { id: 'method', onchange: (e) => { spec.method = e.target.value; save(); } },
+      h('select', { id: 'method', onchange: (e) => { spec.method = e.target.value; setReqDirty(true); save(); } },
         METHODS.map(m => h('option', { value: m, selected: spec.method === m ? '' : undefined }, m))),
       h('input', { id: 'url', value: spec.url, placeholder: 'https://{{baseUrl}}/path',
-        onchange: (e) => { spec.url = e.target.value; save(); } }),
+        oninput: (e) => { spec.url = e.target.value; setReqDirty(true); save(); } }),
       h('button', { class: 'btn dark', id: 'sendBtn', onclick: send }, 'Send'),
     ),
+    h('div', { class: 'note', style: 'margin:0 12px 10px' },
+      'URL and header values support variables like {{baseUrl}} and {{apiToken}}. Resolution order: request vars → folder vars → collection vars → selected environment vars/secrets (RELAY_SECRET_*).'),
     h('div', { class: 'tabs' }, ['params', 'authorization', 'headers', 'body', 'assertions', 'scripts', 'vars'].map(t =>
       h('button', { class: S.tab === t ? 'on' : '', onclick: () => { S.tab = t; renderRequest(); } },
         t[0].toUpperCase() + t.slice(1),
@@ -837,15 +1174,16 @@ function renderRequest() {
 
   const tb = editor.querySelector('#tabBody');
   if (S.tab === 'params') {
-    tb.append(kvTable(spec.query, { onchange: (v) => { spec.query = v; save(); } }));
+    tb.append(kvTable(spec.query, { onchange: (v) => { spec.query = v; setReqDirty(true); save(); } }));
   } else if (S.tab === 'headers') {
+    tb.append(h('div', { class: 'note', style: 'margin-bottom:8px' }, 'Header values support variables, e.g. Authorization: Bearer {{apiToken}}'));
     const inh = inheritedHeaderRows(); if (inh) tb.append(inh);
-    tb.append(kvTable(spec.headers, { onchange: (v) => { spec.headers = v; save(); } }));
+    tb.append(kvTable(spec.headers, { onchange: (v) => { spec.headers = v; setReqDirty(true); save(); } }));
   } else if (S.tab === 'vars') {
-    tb.append(kvTable(spec.vars, { onchange: (v) => { spec.vars = v; save(); } }));
+    tb.append(kvTable(spec.vars, { onchange: (v) => { spec.vars = v; setReqDirty(true); save(); } }));
   } else if (S.tab === 'authorization') {
     const auth = spec.auth || { type: '' };
-    const set = (k, v) => { spec.auth = { ...auth, [k]: v }; if (!spec.auth.type) spec.auth = null; save(); renderRequest(); };
+    const set = (k, v) => { spec.auth = { ...auth, [k]: v }; if (!spec.auth.type) spec.auth = null; setReqDirty(true); save(); renderRequest(); };
     tb.append(h('div', { class: 'formRow' }, h('label', {}, 'Type'),
       h('select', { onchange: (e) => set('type', e.target.value) },
         ['', 'bearer', 'basic', 'apikey'].map(t => h('option', { value: t, selected: (auth.type || '') === t ? '' : undefined }, t || 'none')))));
@@ -871,15 +1209,30 @@ function renderRequest() {
   } else if (S.tab === 'body') {
     const body = spec.body || { type: 'json', content: '' };
     tb.append(h('div', { class: 'formRow' }, h('label', {}, 'Type'),
-      h('select', { onchange: (e) => { spec.body = { ...body, type: e.target.value }; save(); } },
+      h('select', { onchange: (e) => { spec.body = { ...body, type: e.target.value }; setReqDirty(true); save(); renderRequest(); } },
         ['json', 'xml', 'raw', 'urlencoded'].map(t => h('option', { value: t, selected: body.type === t ? '' : undefined }, t)))));
-    tb.append(h('textarea', { class: 'body', placeholder: '{ "id": "{{testIdNumber}}" }',
-      onchange: (e) => { spec.body = { ...body, content: e.target.value }; if (!spec.body.content) spec.body = null; save(); } }, body.content || ''));
+    if (body.type === 'json') {
+      const bodyEditor = jsonEditor(body.content || '', (content) => {
+        spec.body = { ...body, content };
+        if (!spec.body.content) spec.body = null;
+        setReqDirty(true);
+        save();
+      });
+      tb.append(bodyEditor);
+    } else {
+      tb.append(h('textarea', { class: 'body', placeholder: '{ "id": "{{testIdNumber}}" }',
+        oninput: (e) => {
+          spec.body = { ...body, content: e.target.value };
+          if (!spec.body.content) spec.body = null;
+          setReqDirty(true);
+          save();
+        } }, body.content || ''));
+    }
   } else if (S.tab === 'assertions') {
-    tb.append(buildAssertionsEditor(spec, save));
+    tb.append(buildAssertionsEditor(spec, () => { setReqDirty(true); save(); }));
   } else if (S.tab === 'scripts') {
     const scripts = { preRequest: '', tests: '', ...(spec.scripts || {}) };
-    tb.append(renderScriptsTab(spec, scripts, save));
+    tb.append(renderScriptsTab(spec, scripts, () => { setReqDirty(true); save(); }));
 
   }
 
@@ -943,6 +1296,45 @@ function highlightJS(code) {
   return tokens.join('');
 }
 
+function highlightJSON(code) {
+  const escape = (s) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const tokens = [];
+  let i = 0;
+  while (i < code.length) {
+    if (code[i] === '"') {
+      let j = i+1, s = '"';
+      while (j < code.length) {
+        if (code[j] === '\\') { s += code[j] + code[j+1]; j += 2; continue; }
+        s += code[j]; if (code[j++] === '"') break;
+      }
+      const nextNonWs = code.slice(j).match(/\S/);
+      if (nextNonWs && nextNonWs[0] === ':') {
+        tokens.push(`<span class="json-k">${escape(s)}</span>`);
+      } else {
+        tokens.push(`<span class="json-s">${escape(s)}</span>`);
+      }
+      i = j; continue;
+    }
+    const nm = /^-?\d+\.?\d*([eE][+-]?\d+)?/.exec(code.slice(i));
+    if (nm && (i === 0 || /[\s:[,\[\{]/.test(code[i-1]))) {
+      tokens.push(`<span class="json-n">${nm[0]}</span>`);
+      i += nm[0].length; continue;
+    }
+    if (code.slice(i, i+4) === 'true' || code.slice(i, i+5) === 'false') {
+      const w = code.slice(i, i+4) === 'true' ? 'true' : 'false';
+      tokens.push(`<span class="json-b">${w}</span>`);
+      i += w.length; continue;
+    }
+    if (code.slice(i, i+4) === 'null') {
+      tokens.push(`<span class="json-null">null</span>`);
+      i += 4; continue;
+    }
+    tokens.push(escape(code[i]));
+    i++;
+  }
+  return tokens.join('');
+}
+
 function scriptEditor(value, onChange) {
   const wrap = h('div', { class: 'scriptEditor' });
   const lineNums = h('div', { class: 'scriptLineNums' });
@@ -967,7 +1359,34 @@ function scriptEditor(value, onChange) {
     }
   });
   wrap.append(lineNums, highlight, ta);
-  // Initial render.
+  setTimeout(update, 0);
+  return wrap;
+}
+
+function jsonEditor(value, onChange) {
+  const wrap = h('div', { class: 'scriptEditor' });
+  const lineNums = h('div', { class: 'scriptLineNums' });
+  const highlight = h('div', { class: 'scriptHighlight' });
+  const ta = h('textarea', { spellcheck: 'false', autocomplete: 'off', autocorrect: 'off',
+    autocapitalize: 'off', wrap: 'off', value: value });
+
+  const update = () => {
+    const lines = ta.value.split('\n');
+    lineNums.innerHTML = lines.map((_, i) => i+1).join('\n');
+    highlight.innerHTML = highlightJSON(ta.value) + '\n';
+    onChange(ta.value);
+  };
+  ta.addEventListener('input', update);
+  ta.addEventListener('keydown', (e) => {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const s = ta.selectionStart, end = ta.selectionEnd;
+      ta.value = ta.value.slice(0, s) + '  ' + ta.value.slice(end);
+      ta.selectionStart = ta.selectionEnd = s + 2;
+      update();
+    }
+  });
+  wrap.append(lineNums, highlight, ta);
   setTimeout(update, 0);
   return wrap;
 }
@@ -1070,12 +1489,17 @@ function renderResponse(card) {
           h('span', { class: 'bar', style: `width:${Math.max(2, 220 * tm[k] / total)}px` })))));
   }
   const allTests = [
-    ...(r.assertions || []).map(a => ({ label: a.type + ': ' + a.message, passed: a.passed, src: 'assert' })),
+    ...(r.assertions || []).map(a => ({ label: a.type + ': ' + a.message, passed: a.passed, src: 'assert', assertion: a })),
     ...(r.scriptTests || []).map(t => ({ label: t.name + (t.error ? ': ' + t.error : ''), passed: t.passed, src: 'pm.test' })),
   ];
   if (allTests.length) {
     card.append(h('div', { id: 'assertChips' }, allTests.map(a =>
-      h('span', { class: 'chip ' + (a.passed ? 'ok' : 'bad'), title: a.label },
+      h('span', {
+        class: 'chip ' + (a.passed ? 'ok' : 'bad') + (a.src === 'assert' ? ' clickable' : ''),
+        title: a.src === 'assert' ? 'Click to add to request' : a.label,
+        style: a.src === 'assert' ? 'cursor:pointer' : '',
+        onclick: a.src === 'assert' ? () => addAssertionFromHistory(a.assertion) : undefined
+      },
         (a.passed ? '✓ ' : '✕ ') + (a.src === 'pm.test' ? '●' : '') + ' ' + a.label))));
   }
 }
@@ -1132,19 +1556,21 @@ function prettyJSON(text) {
   } catch { return [text]; }
 }
 
-async function saveRequest() {
+async function saveRequest(showToast = false) {
   if (!S.req) return;
   try {
     await api('/api/requests/' + S.req.id, { method: 'PUT', body: S.req });
     const meta = findReqMeta(S.req.id);
     if (meta) { meta.meta.name = S.req.spec.name; meta.meta.method = S.req.spec.method; meta.meta.url = S.req.spec.url; }
+    setReqDirty(false);
     renderSide();
+    if (showToast) toast('Request saved');
   } catch (e) { toast(e.message, true); }
 }
 
 async function deleteRequest() {
   if (!S.req) return;
-  if (!confirm(`Delete request "${S.req.spec.name}"?`)) return;
+  if (!await modal.confirm(`Delete "${S.req.spec.name}"?`, { danger: true, ok: 'Delete' })) return;
   try {
     await api('/api/requests/' + S.req.id, { method: 'DELETE' });
     S.reqId = null; S.req = null; S.last = null;
@@ -1281,19 +1707,40 @@ function renderCollectionSettings(c) {
   for (const f of c.folders || []) {
     folderList.append(h('span', { class: 'att' }, '🗀 ' + f.name + ' ',
       h('button', { class: 'delRow', title: 'Delete folder (and its requests)', onclick: async () => {
-        if (!confirm(`Delete folder "${f.name}" and the requests inside it?`)) return;
+        if (!await modal.confirm(`Delete folder "${f.name}" and its requests?`, { danger: true, ok: 'Delete' })) return;
         try { await api('/api/folders/' + f.id, { method: 'DELETE' }); await refresh(); renderCollectionSettings(findCol(c.id)); }
         catch (e) { toast(e.message, true); }
       } }, ' ✕')));
   }
   folderList.append(h('button', { class: 'att', onclick: async () => {
-    const name = prompt('New folder name'); if (!name) return;
+    const name = await modal.prompt('New folder name'); if (!name) return;
     try {
       await api('/api/folders', { method: 'POST', body: { collectionId: c.id, name, headers: {}, vars: {} } });
       await refresh(); renderCollectionSettings(findCol(c.id));
     } catch (e) { toast(e.message, true); }
   } }, '+ New folder'));
   card.append(folderList);
+}
+
+function addAssertionFromHistory(assertion) {
+  if (!S.req) { toast('Open a request first', true); return; }
+  const spec = S.req.spec || {};
+  const asserts = spec.assertions || [];
+  const newAssert = {
+    type: assertion.type,
+    ...(assertion.type === 'status' ? { equals: S.last?.status || 200 } : {}),
+    ...(assertion.type === 'jsonpath' ? { path: '', equals: '' } : {}),
+    ...(assertion.type === 'header' ? { name: '', equals: '' } : {}),
+    ...(assertion.type === 'contains' ? { contains: '' } : {}),
+    ...(assertion.type === 'max_ms' ? { max_ms: 1000 } : {}),
+  };
+  asserts.push(newAssert);
+  spec.assertions = asserts;
+  S.req.spec = spec;
+  saveRequest();
+  S.tab = 'assertions';
+  renderRequest();
+  toast('Assertion added');
 }
 
 function renderFolderSettings(f, c) {
@@ -1427,8 +1874,8 @@ function renderEnvView(name) {
         h('small', { style: 'color:var(--dim)' }, '(RELAY_SECRET_' + s.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase() + ')'),
         h('button', { class: 'delRow', onclick: () => { env.secrets = env.secrets.filter(x => x !== s); saveEnv(env); renderSecrets(); } }, ' ✕')));
     }
-    secWrap.append(h('button', { class: 'att', onclick: () => {
-      const n = prompt('Secret variable name (e.g. apiToken)'); if (!n) return;
+    secWrap.append(h('button', { class: 'att', onclick: async () => {
+      const n = await modal.prompt('Add secret variable', { placeholder: 'e.g. apiToken' }); if (!n) return;
       env.secrets = [...(env.secrets || []), n]; saveEnv(env); renderSecrets();
     } }, '+ Add secret'));
   };
@@ -1436,7 +1883,7 @@ function renderEnvView(name) {
   card.append(secWrap);
   card.append(h('div', { style: 'margin-top:18px' },
     h('button', { class: 'btn', onclick: async () => {
-      if (!confirm('Delete environment ' + env.name + '?')) return;
+      if (!await modal.confirm(`Delete environment "${env.name}"?`, { danger: true, ok: 'Delete' })) return;
       await api('/api/environments/' + encodeURIComponent(env.name), { method: 'DELETE' });
       await refresh(); renderEnvView();
     } }, 'Delete environment')));
@@ -1465,7 +1912,7 @@ function renderPresetView(id) {
   card.append(h('div', { style: 'display:flex;gap:10px;align-items:center;margin-bottom:4px' },
     h('h2', { style: 'margin:0;font-family:var(--mono)' }, p.name),
     h('button', { class: 'btn', style: 'margin-left:auto', onclick: async () => {
-      if (!confirm('Delete preset ' + p.name + '?')) return;
+      if (!await modal.confirm(`Delete preset "${p.name}"?`, { danger: true, ok: 'Delete' })) return;
       await api('/api/presets/' + p.id, { method: 'DELETE' }); S.presetId = null; await refresh(); renderPresetView();
     } }, 'Delete'),
     h('button', { class: 'btn dark', onclick: () => save() }, 'Save changes')));
@@ -1574,8 +2021,87 @@ function fmtSize(n) { return n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFi
 
 document.addEventListener('keydown', (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); send(); }
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+    e.preventDefault();
+    if (S.req) saveRequest(true);
+  }
 });
 
+/* ---------- collection context menu ---------- */
+async function createRequestInCollection(colId) {
+  try {
+    const created = await api('/api/requests', { method: 'POST',
+      body: { collectionId: colId, spec: { name: 'Untitled', method: 'GET', url: 'https://' } } });
+    S.openCols.add(colId);
+    await refresh();
+    openRequest(created.id);
+    toast('Request created');
+  } catch (err) { toast(err.message, true); }
+}
+
+async function createFolderInCollection(colId) {
+  try {
+    const name = await modal.prompt('New folder name'); if (!name) return;
+    await api('/api/folders', { method: 'POST', body: { collectionId: colId, name, headers: {}, vars: {} } });
+    S.openCols.add(colId);
+    await refresh();
+    toast('Folder created');
+  } catch (err) { toast(err.message, true); }
+}
+
+function showColCtx(e, c) {
+  ctxMenu.show(e.clientX, e.clientY, [
+    { icon: '+', label: 'New request', action: () => createRequestInCollection(c.id) },
+    { icon: '+', label: 'New folder', action: () => createFolderInCollection(c.id) },
+    '-',
+    { icon: '▶', label: 'Run collection', action: () => runCollection(c) },
+    { icon: '⚙', label: 'Settings', action: () => renderCollectionSettings(c) },
+    '-',
+    { icon: '↓', label: 'Export as Postman…', action: async () => {
+      try {
+        const text = await api(`/api/export?format=postman&collection=${c.id}&env=${encodeURIComponent(S.envName)}`);
+        const blob = new Blob([JSON.stringify(text, null, 2)], { type: 'text/plain' });
+        const a = h('a', { href: URL.createObjectURL(blob), download: slugify(c.name) + '.postman_collection.json' });
+        a.click(); URL.revokeObjectURL(a.href); toast('Exported');
+      } catch (err) { toast(err.message, true); }
+    }},
+    { icon: '↓', label: 'Export as OpenAPI…', action: async () => {
+      try {
+        const text = await api(`/api/export?format=openapi&collection=${c.id}&env=${encodeURIComponent(S.envName)}`);
+        const blob = new Blob([JSON.stringify(text, null, 2)], { type: 'text/plain' });
+        const a = h('a', { href: URL.createObjectURL(blob), download: slugify(c.name) + '.openapi.json' });
+        a.click(); URL.revokeObjectURL(a.href); toast('Exported');
+      } catch (err) { toast(err.message, true); }
+    }},
+    '-',
+    { icon: '🗑', label: 'Delete collection', danger: true, action: async () => {
+      if (!await modal.confirm(`Delete "${c.name}" and all its requests?`, { danger: true, ok: 'Delete' })) return;
+      try {
+        await api('/api/collections/' + c.id, { method: 'DELETE' });
+        if (S.reqId && findReqMeta(S.reqId)?.col.id === c.id) { S.reqId = null; S.req = null; $('work').innerHTML = '<div class="empty">Select a request, or create one.</div>'; $('meta').hidden = true; }
+        await refresh();
+      } catch (err) { toast(err.message, true); }
+    }},
+  ]);
+}
+
+/* ---------- history context menu ---------- */
+function showHistCtx(e, entry) {
+  ctxMenu.show(e.clientX, e.clientY, [
+    { icon: '↗', label: 'Inspect', action: () => showHistory(entry.id) },
+    ...(entry.requestId ? [{ icon: '→', label: 'Open request', action: () => {
+      S.view = 'collections';
+      document.querySelector('[data-view=collections]').click();
+      openRequest(entry.requestId);
+    }}] : []),
+    '-',
+    { icon: '⧉', label: 'Copy URL', action: () => copyText(entry.url, 'URL') },
+    { icon: '⧉', label: 'Copy method + URL', action: () => copyText(entry.method + ' ' + entry.url, 'Method + URL') },
+  ]);
+}
+
+ctxMenu.init();
+modal.init();
 refresh().then(() => {
   if (S.state.collections[0]) {
     S.openCols.add(S.state.collections[0].id);

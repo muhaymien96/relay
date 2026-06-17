@@ -17,9 +17,17 @@ func ParseCurl(command string) (*dsl.Request, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(tokens) == 0 || tokens[0] != "curl" {
+	start := -1
+	for i, tok := range tokens {
+		if isCurlToken(tok) {
+			start = i
+			break
+		}
+	}
+	if start == -1 {
 		return nil, fmt.Errorf("not a curl command")
 	}
+	tokens = tokens[start:]
 
 	req := &dsl.Request{Headers: map[string]string{}}
 	var dataParts []string
@@ -36,6 +44,26 @@ func ParseCurl(command string) (*dsl.Request, error) {
 	for i := 1; i < len(tokens); i++ {
 		t := tokens[i]
 		switch {
+		case t == "^" || t == "`":
+			// Windows line continuation markers; ignore as no-op tokens.
+			continue
+		case strings.HasPrefix(t, "--request="):
+			req.Method = strings.ToUpper(strings.TrimPrefix(t, "--request="))
+		case strings.HasPrefix(t, "--header="):
+			v := strings.TrimPrefix(t, "--header=")
+			name, value, ok := strings.Cut(v, ":")
+			if !ok {
+				continue
+			}
+			req.Headers[strings.TrimSpace(name)] = strings.TrimSpace(value)
+		case strings.HasPrefix(t, "--url="):
+			req.URL = strings.TrimPrefix(t, "--url=")
+		case strings.HasPrefix(t, "--data="):
+			dataParts = append(dataParts, strings.TrimPrefix(t, "--data="))
+		case strings.HasPrefix(t, "--data-raw="):
+			dataParts = append(dataParts, strings.TrimPrefix(t, "--data-raw="))
+		case strings.HasPrefix(t, "--data-binary="):
+			dataParts = append(dataParts, strings.TrimPrefix(t, "--data-binary="))
 		case t == "-X" || t == "--request":
 			v, err := next(&i, t)
 			if err != nil {
@@ -179,6 +207,15 @@ func firstNonEmpty(vals ...string) string {
 	return ""
 }
 
+func isCurlToken(tok string) bool {
+	tok = strings.ToLower(strings.TrimSpace(tok))
+	if tok == "curl" || tok == "curl.exe" {
+		return true
+	}
+	tok = strings.ReplaceAll(tok, "\\", "/")
+	return strings.HasSuffix(tok, "/curl") || strings.HasSuffix(tok, "/curl.exe")
+}
+
 // shellSplit tokenizes a POSIX-ish command line: single quotes (no
 // escapes), double quotes (\\ \" escapes), bare-word backslash escapes, and
 // backslash-newline continuations.
@@ -227,6 +264,13 @@ func shellSplit(s string) ([]string, error) {
 			if i+1 < len(s) {
 				if s[i+1] == '\n' { // line continuation
 					i += 2
+					continue
+				}
+				if s[i+1] == '\r' { // CRLF continuation
+					i += 2
+					if i < len(s) && s[i] == '\n' {
+						i++
+					}
 					continue
 				}
 				started = true

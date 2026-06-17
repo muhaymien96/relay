@@ -351,6 +351,23 @@ func TestExportPostmanEndpoint(t *testing.T) {
 	}
 }
 
+func TestExportCurlEndpoint(t *testing.T) {
+	s, reqID := newServer(t)
+	req := httptest.NewRequest("GET", "/api/export?format=curl&request="+itoa(reqID)+"&env=local", nil)
+	out := httptest.NewRecorder()
+	s.Handler().ServeHTTP(out, req)
+	if out.Code != 200 {
+		t.Fatalf("export curl: %d %s", out.Code, out.Body.String())
+	}
+	cmd := out.Body.String()
+	if !strings.Contains(cmd, "curl --location --request") || !strings.Contains(cmd, "--url") {
+		t.Fatalf("not postman-style curl: %s", cmd)
+	}
+	if strings.Contains(cmd, "hunter2") || !strings.Contains(cmd, "$RELAY_SECRET_APITOKEN") {
+		t.Fatalf("secret handling wrong: %s", cmd)
+	}
+}
+
 func TestMoveRequestToFolder(t *testing.T) {
 	s, reqID := newServer(t)
 	rec, doc := call(t, s, "POST", "/api/folders", `{"collectionId":1,"name":"verify","headers":{},"vars":{}}`)

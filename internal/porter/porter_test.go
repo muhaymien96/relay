@@ -120,7 +120,7 @@ func TestCurl(t *testing.T) {
 		Body: []byte(`{"id":"42"}`),
 	}
 	got := Curl(r)
-	want := `curl -X POST -H 'Authorization: Bearer tok' -H 'Content-Type: application/json' --data-raw '{"id":"42"}' 'https://api.example.com/verify?x=a b'`
+	want := `curl --location --request POST --url 'https://api.example.com/verify?x=a b' --header 'Authorization: Bearer tok' --header 'Content-Type: application/json' --data-raw '{"id":"42"}'`
 	if got != want {
 		t.Errorf("curl:\n got %s\nwant %s", got, want)
 	}
