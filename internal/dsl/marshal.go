@@ -15,6 +15,17 @@ func Marshal(r *Request) []byte {
 	kv("name", r.Name)
 	kv("method", r.Method)
 	kv("url", r.URL)
+	if r.Owner != "" {
+		kv("owner", r.Owner)
+	}
+	if r.Priority != "" {
+		kv("priority", r.Priority)
+	}
+	if r.XrayKey != "" {
+		kv("xray_key", r.XrayKey)
+	}
+	writeList(&b, "tags", r.Tags)
+	writeList(&b, "requirements", r.Requirements)
 
 	writeTable(&b, "query", r.Query)
 	writeTable(&b, "headers", r.Headers)
@@ -69,6 +80,17 @@ func Marshal(r *Request) []byte {
 	}
 
 	return []byte(b.String())
+}
+
+func writeList(b *strings.Builder, name string, items []string) {
+	if len(items) == 0 {
+		return
+	}
+	parts := make([]string, len(items))
+	for i, s := range items {
+		parts[i] = quote(s)
+	}
+	fmt.Fprintf(b, "%s = [%s]\n", name, strings.Join(parts, ", "))
 }
 
 func writeTable(b *strings.Builder, name string, m map[string]string) {
