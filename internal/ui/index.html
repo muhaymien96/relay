@@ -367,7 +367,248 @@ function renderSide() {
         h('b', {}, '⛉ ' + p.name),
         h('small', {}, `${(p.headers || []).length} headers · ${atts} attached`)));
     }
+  } else if (S.view === 'tests') {
+    renderTestsSide(list);
   }
+}
+
+/* ---------- test management ---------- */
+function allTests() {
+  const out = [];
+  for (const c of S.state.collections || [])
+    for (const q of c.requests) out.push({ col: c, meta: q });
+  return out;
+}
+function testFailedLastRun(reqId) {
+  const e = (S.history || []).find(x => x.requestId === reqId);
+  return e ? !(e.status >= 200 && e.status < 400) : false;
+}
+function filteredTests() {
+  const q = (S.testSearch || '').toLowerCase();
+  return allTests().filter(({ col, meta }) => {
+    if (q && !(meta.name.toLowerCase().includes(q) || meta.url.toLowerCase().includes(q))) return false;
+    const full = S.testFull && S.testFull[meta.id];
+    for (const chip of S.testChips || []) {
+      if (chip === 'failed' && !testFailedLastRun(meta.id)) return false;
+      if (chip === 'noxray' && full && full.spec.xrayKey) return false;
+      if (chip === 'hasassert' && !(full && (full.spec.assertions || []).length)) return false;
+      if (chip === 'tagged' && !(full && (full.spec.tags || []).length)) return false;
+    }
+    return true;
+  });
+}
+function renderTestsSide(list) {
+  list.append(h('div', { style: 'padding:0 8px 8px' },
+    h('input', { type: 'text', placeholder: 'Search tests…', style: 'width:100%', value: S.testSearch || '',
+      oninput: (e) => { S.testSearch = e.target.value; renderSide(); } })));
+  const chipDefs = [['failed', 'Failed last run'], ['noxray', 'No Xray link'], ['hasassert', 'Has assertions'], ['tagged', 'Tagged']];
+  const chips = h('div', { class: 'chips', style: 'padding:0 8px 10px' });
+  S.testChips = S.testChips || [];
+  for (const [key, label] of chipDefs) {
+    const on = S.testChips.includes(key);
+    chips.append(h('button', { class: 'att' + (on ? ' on' : ''), style: 'font-size:11px;padding:2px 9px', onclick: () => {
+      S.testChips = on ? S.testChips.filter(x => x !== key) : [...S.testChips, key];
+      renderSide();
+    } }, label));
+  }
+  list.append(chips);
+  for (const { col, meta } of filteredTests()) {
+    list.append(h('div', { class: 'reqRow' + (meta.id === S.testId ? ' on' : ''), onclick: () => openTest(meta.id) },
+      h('span', { class: 'method m-' + meta.method }, meta.method),
+      h('span', { class: 'nm' }, meta.name),
+      h('small', { style: 'color:var(--faint);margin-left:auto' }, col.name)));
+  }
+  if (!filteredTests().length) list.append(h('div', { class: 'histRow' }, h('small', {}, 'No tests match')));
+}
+
+async function ensureTestFull() {
+  S.testFull = S.testFull || {};
+  const todo = allTests().filter(({ meta }) => !S.testFull[meta.id]);
+  if (!todo.length) return;
+  await Promise.all(todo.map(async ({ meta }) => {
+    try { S.testFull[meta.id] = await api('/api/requests/' + meta.id); } catch { /* skip */ }
+  }));
+}
+
+async function renderTestsView() {
+  await loadHistory();
+  await ensureTestFull();
+  renderSide();
+  if (S.testId) openTest(S.testId); else {
+    $('crumb').innerHTML = ''; $('crumb').append('Workspace / ', h('b', {}, 'Test Management'));
+    $('meta').hidden = true;
+    $('work').innerHTML = '';
+    $('work').append(h('div', { class: 'empty' }, 'Select a test from the list.'));
+  }
+}
+
+async function openTest(id) {
+  S.testId = id;
+  try {
+    const full = await api('/api/requests/' + id);
+    S.testFull = S.testFull || {}; S.testFull[id] = full;
+    renderSide();
+    renderTestEditor(full);
+  } catch (e) { toast(e.message, true); }
+}
+
+function testStat(predicate) {
+  return (S.history || []).find(e => predicate(e));
+}
+
+function renderTestEditor(full) {
+  const spec = full.spec;
+  const meta = findReqMeta(full.id);
+  $('crumb').innerHTML = '';
+  $('crumb').append('Test Management / ', h('b', {}, meta ? meta.col.name : ''), ' / ', spec.name);
+  const work = $('work'); work.innerHTML = '';
+  const save = debounce(async () => {
+    try {
+      await api('/api/requests/' + full.id, { method: 'PUT', body: full });
+      const m = findReqMeta(full.id);
+      if (m) { m.meta.name = spec.name; }
+      renderSide();
+    } catch (e) { toast(e.message, true); }
+  }, 400);
+
+  // Identity
+  const identity = h('div', { class: 'card', style: 'padding:14px' },
+    h('div', { class: 'lbl', style: 'font-size:10px;letter-spacing:.1em;color:var(--dim);font-weight:700;margin-bottom:8px' }, 'TEST IDENTITY'),
+    h('div', { class: 'formRow' }, h('label', {}, 'Name'),
+      h('input', { type: 'text', value: spec.name, onchange: (e) => { spec.name = e.target.value; save(); } })),
+    h('div', { class: 'formRow' }, h('label', {}, 'Request'),
+      h('span', { class: 'method m-' + spec.method }, spec.method),
+      h('span', { style: 'font-family:var(--mono);color:var(--dim)' }, spec.url)),
+    h('div', { class: 'formRow' }, h('label', {}, 'Source file'),
+      h('span', { style: 'font-family:var(--mono);color:var(--dim)' }, spec.path || '(stored in relay.db, not yet exported)')),
+    h('button', { class: 'btn', style: 'margin-top:4px', onclick: () => { S.view = 'collections'; document.querySelector('[data-view=collections]').click(); openRequest(full.id); } },
+      'Open in request editor'));
+  work.append(identity);
+
+  // Tags
+  const tagsCard = h('div', { class: 'card', style: 'padding:14px' },
+    h('div', { class: 'lbl', style: 'font-size:10px;letter-spacing:.1em;color:var(--dim);font-weight:700;margin-bottom:8px' }, 'TAGS'));
+  const tagChips = h('div', { class: 'chips' });
+  const renderTags = () => {
+    tagChips.innerHTML = '';
+    for (const t of spec.tags || []) {
+      tagChips.append(h('span', { class: 'att on' }, t + ' ',
+        h('button', { class: 'delRow', onclick: () => { spec.tags = spec.tags.filter(x => x !== t); save(); renderTags(); } }, ' ✕')));
+    }
+    tagChips.append(h('button', { class: 'att', onclick: () => {
+      const t = prompt('Tag name'); if (!t) return;
+      spec.tags = [...(spec.tags || []), t]; save(); renderTags();
+    } }, '+ Add tag'));
+  };
+  renderTags();
+  tagsCard.append(tagChips);
+  work.append(tagsCard);
+
+  // Owner + Priority
+  const ownerCard = h('div', { class: 'card', style: 'padding:14px' },
+    h('div', { class: 'lbl', style: 'font-size:10px;letter-spacing:.1em;color:var(--dim);font-weight:700;margin-bottom:8px' }, 'OWNER & PRIORITY'),
+    h('div', { class: 'formRow' }, h('label', {}, 'Owner'),
+      h('input', { type: 'text', value: spec.owner || '', placeholder: 'name or team', onchange: (e) => { spec.owner = e.target.value; save(); } })),
+    h('div', { class: 'formRow' }, h('label', {}, 'Priority'),
+      h('select', { onchange: (e) => { spec.priority = e.target.value; save(); } },
+        ['', 'low', 'med', 'high'].map(p => h('option', { value: p, selected: (spec.priority || '') === p ? '' : undefined }, p || 'unset')))));
+  work.append(ownerCard);
+
+  // Assertions (read-only summary, edit via request editor)
+  const asserts = spec.assertions || [];
+  const assertCard = h('div', { class: 'card', style: 'padding:14px' },
+    h('div', { style: 'display:flex;align-items:center;gap:8px;margin-bottom:8px' },
+      h('div', { class: 'lbl', style: 'font-size:10px;letter-spacing:.1em;color:var(--dim);font-weight:700' }, 'ASSERTIONS'),
+      h('span', { class: 'n', style: 'background:var(--ink-soft);color:var(--ink);border-radius:99px;font-size:10px;padding:0 6px' }, String(asserts.length))));
+  if (!asserts.length) {
+    assertCard.append(h('div', { style: 'color:var(--faint)' }, 'No assertions yet.'));
+  } else {
+    const table = h('table', { class: 'kv' },
+      h('tr', {}, h('th', {}, 'Type'), h('th', {}, 'Path / Name'), h('th', {}, 'Expected')));
+    for (const a of asserts) {
+      table.append(h('tr', {},
+        h('td', {}, h('span', { class: 'badge pass', style: 'background:var(--ink-soft);color:var(--ink);border-color:var(--line2)' }, a.type)),
+        h('td', { style: 'font-family:var(--mono)' }, a.path || a.name || ''),
+        h('td', { style: 'font-family:var(--mono)' }, String(a.equals ?? a.contains ?? a.max_ms ?? ''))));
+    }
+    assertCard.append(table);
+  }
+  assertCard.append(h('button', { class: 'btn', style: 'margin-top:10px', onclick: () => { S.view = 'collections'; document.querySelector('[data-view=collections]').click(); S.tab = 'assertions'; openRequest(full.id); } },
+    'Edit assertions in request editor'));
+  work.append(assertCard);
+
+  // Traceability
+  const traceCard = h('div', { class: 'card', style: 'padding:14px' },
+    h('div', { class: 'lbl', style: 'font-size:10px;letter-spacing:.1em;color:var(--dim);font-weight:700;margin-bottom:8px' }, 'TRACEABILITY'),
+    h('div', { class: 'formRow' }, h('label', {}, 'Xray key'),
+      h('input', { type: 'text', value: spec.xrayKey || '', placeholder: 'PROJ-123', onchange: (e) => { spec.xrayKey = e.target.value; save(); } })));
+  traceCard.append(h('div', { class: 'note' }, 'Xray push integration is not implemented yet — this field is plain metadata stored with the test.'));
+  const reqChips = h('div', { class: 'chips', style: 'margin-top:10px' });
+  const renderReqs = () => {
+    reqChips.innerHTML = '';
+    for (const rq of spec.requirements || []) {
+      reqChips.append(h('span', { class: 'att on' }, rq + ' ',
+        h('button', { class: 'delRow', onclick: () => { spec.requirements = spec.requirements.filter(x => x !== rq); save(); renderReqs(); } }, ' ✕')));
+    }
+    reqChips.append(h('button', { class: 'att', onclick: () => {
+      const rq = prompt('Requirement id'); if (!rq) return;
+      spec.requirements = [...(spec.requirements || []), rq]; save(); renderReqs();
+    } }, '+ Add requirement'));
+  };
+  renderReqs();
+  traceCard.append(reqChips);
+  work.append(traceCard);
+
+  // Last run
+  const lastEntry = (S.history || []).find(e => e.requestId === full.id);
+  const lastCard = h('div', { class: 'card', style: 'padding:14px' },
+    h('div', { class: 'lbl', style: 'font-size:10px;letter-spacing:.1em;color:var(--dim);font-weight:700;margin-bottom:8px' }, 'LAST RUN'));
+  if (!lastEntry && !(S.lastTestRun && S.lastTestRun.id === full.id)) {
+    lastCard.append(h('div', { style: 'color:var(--faint)' }, 'No recorded sends for this test yet.'));
+  } else if (S.lastTestRun && S.lastTestRun.id === full.id) {
+    const r = S.lastTestRun.result;
+    const ok = r.status >= 200 && r.status < 400;
+    lastCard.append(h('div', { style: 'display:flex;gap:14px;align-items:baseline;margin-bottom:8px' },
+      h('span', { class: 'pill ' + (ok ? 'ok' : 'bad') }, h('span', { class: 'dot' }), r.status),
+      h('span', {}, r.timing.total.toFixed(0) + 'ms'),
+      h('span', { style: 'color:var(--dim)' }, 'just now')));
+    for (const a of r.assertions || []) {
+      lastCard.append(h('div', { class: 'runRow', style: 'padding:6px 0' },
+        h('span', { class: 'ic ' + (a.passed ? 'ok' : 'bad') }, a.passed ? '✓' : '✕'),
+        h('span', {}, a.type), h('small', { style: 'color:var(--dim)' }, a.message)));
+    }
+  } else {
+    const ok = lastEntry.status >= 200 && lastEntry.status < 400;
+    lastCard.append(h('div', { style: 'display:flex;gap:14px;align-items:baseline' },
+      h('span', { class: 'pill ' + (ok ? 'ok' : 'bad') }, h('span', { class: 'dot' }), lastEntry.status),
+      h('span', {}, lastEntry.durationMs.toFixed(0) + 'ms'),
+      h('span', { style: 'color:var(--dim)' }, new Date(lastEntry.sentAt).toLocaleString())));
+    lastCard.append(h('div', { class: 'note', style: 'margin-top:8px' }, 'Per-assertion results aren\'t stored in history — run the test again to see fresh assertion outcomes here.'));
+  }
+  work.append(lastCard);
+
+  renderTestMeta(full);
+}
+
+function renderTestMeta(full) {
+  const m = $('meta'); m.hidden = false; m.innerHTML = '';
+  m.append(h('h3', {}, 'Run'));
+  m.append(h('div', { class: 'metaCard' }, h('span', { class: 'lbl' }, 'Environment'),
+    h('select', { style: 'width:100%', onchange: (e) => { S.envName = e.target.value; localStorage.envName = S.envName; } },
+      [h('option', { value: '' }, 'No environment'), ...(S.state.environments || []).map(e =>
+        h('option', { value: e.name, selected: e.name === S.envName ? '' : undefined }, e.name))])));
+  m.append(h('button', { class: 'btn dark', id: 'testRunBtn', style: 'width:100%', onclick: () => runTest(full) }, 'Run'));
+}
+
+async function runTest(full) {
+  const btn = $('testRunBtn'); if (btn) btn.disabled = true;
+  try {
+    const result = await api('/api/send', { method: 'POST', body: { requestId: full.id, env: S.envName } });
+    S.lastTestRun = { id: full.id, result };
+    await loadHistory();
+    renderTestEditor(full);
+  } catch (e) { toast(e.message, true); }
+  finally { if (btn) btn.disabled = false; }
 }
 function reqRow(q) {
   return h('div', { class: 'reqRow' + (q.id === S.reqId ? ' on' : ''), onclick: () => openRequest(q.id) },
