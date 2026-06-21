@@ -223,6 +223,7 @@
     <button class="navItem" data-view="history">⟲ History</button>
     <button class="navItem" data-view="environments">⛁ Environments</button>
     <button class="navItem" data-view="presets">☰ Header Presets</button>
+    <button class="navItem" data-view="tests">☑ Test Management</button>
     <button class="navItem" disabled>▣ Mock Servers <span class="tag">v2</span></button>
     <button class="navItem" disabled>◉ Monitor <span class="tag">v2</span></button>
     <div id="railSpace"></div>
@@ -311,14 +312,15 @@ document.querySelectorAll('.navItem[data-view]').forEach(b => b.onclick = () => 
   if (S.view === 'environments') renderEnvView();
   if (S.view === 'presets') renderPresetView();
   if (S.view === 'settings') renderSettingsView();
+  if (S.view === 'tests') renderTestsView();
   if (S.view === 'collections' && S.reqId) openRequest(S.reqId);
 });
 
 function renderSide() {
   const list = $('sideList'); list.innerHTML = '';
-  const titles = { collections: 'COLLECTIONS', history: 'HISTORY', environments: 'ENVIRONMENTS', presets: 'HEADER PRESETS', settings: 'SETTINGS' };
+  const titles = { collections: 'COLLECTIONS', history: 'HISTORY', environments: 'ENVIRONMENTS', presets: 'HEADER PRESETS', settings: 'SETTINGS', tests: 'TEST MANAGEMENT' };
   $('sideTitle').textContent = titles[S.view];
-  $('sideAdd').style.visibility = (S.view === 'history' || S.view === 'settings') ? 'hidden' : 'visible';
+  $('sideAdd').style.visibility = (S.view === 'history' || S.view === 'settings' || S.view === 'tests') ? 'hidden' : 'visible';
 
   if (S.view === 'collections') {
     for (const c of S.state.collections || []) {

@@ -23,6 +23,13 @@ type Request struct {
 	Body       *Body             `toml:"body" json:"body,omitempty"`
 	Assertions []Assertion       `toml:"assertions" json:"assertions,omitempty"`
 
+	// Test-management metadata. Optional; absent from older .req.toml files.
+	Tags         []string `toml:"tags" json:"tags,omitempty"`
+	Owner        string   `toml:"owner" json:"owner,omitempty"`
+	Priority     string   `toml:"priority" json:"priority,omitempty"` // low | med | high
+	XrayKey      string   `toml:"xray_key" json:"xrayKey,omitempty"`
+	Requirements []string `toml:"requirements" json:"requirements,omitempty"`
+
 	// Path is where the request was loaded from (not serialized).
 	Path string `toml:"-" json:"-"`
 }
