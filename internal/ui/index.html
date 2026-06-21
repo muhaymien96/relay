@@ -514,27 +514,13 @@ function renderTestEditor(full) {
         ['', 'low', 'med', 'high'].map(p => h('option', { value: p, selected: (spec.priority || '') === p ? '' : undefined }, p || 'unset')))));
   work.append(ownerCard);
 
-  // Assertions (read-only summary, edit via request editor)
+  // Assertions (live editor, shared with the request editor's assertions tab)
   const asserts = spec.assertions || [];
   const assertCard = h('div', { class: 'card', style: 'padding:14px' },
     h('div', { style: 'display:flex;align-items:center;gap:8px;margin-bottom:8px' },
       h('div', { class: 'lbl', style: 'font-size:10px;letter-spacing:.1em;color:var(--dim);font-weight:700' }, 'ASSERTIONS'),
       h('span', { class: 'n', style: 'background:var(--ink-soft);color:var(--ink);border-radius:99px;font-size:10px;padding:0 6px' }, String(asserts.length))));
-  if (!asserts.length) {
-    assertCard.append(h('div', { style: 'color:var(--faint)' }, 'No assertions yet.'));
-  } else {
-    const table = h('table', { class: 'kv' },
-      h('tr', {}, h('th', {}, 'Type'), h('th', {}, 'Path / Name'), h('th', {}, 'Expected')));
-    for (const a of asserts) {
-      table.append(h('tr', {},
-        h('td', {}, h('span', { class: 'badge pass', style: 'background:var(--ink-soft);color:var(--ink);border-color:var(--line2)' }, a.type)),
-        h('td', { style: 'font-family:var(--mono)' }, a.path || a.name || ''),
-        h('td', { style: 'font-family:var(--mono)' }, String(a.equals ?? a.contains ?? a.max_ms ?? ''))));
-    }
-    assertCard.append(table);
-  }
-  assertCard.append(h('button', { class: 'btn', style: 'margin-top:10px', onclick: () => { S.view = 'collections'; document.querySelector('[data-view=collections]').click(); S.tab = 'assertions'; openRequest(full.id); } },
-    'Edit assertions in request editor'));
+  assertCard.append(buildAssertionsEditor(spec, save));
   work.append(assertCard);
 
   // Traceability
@@ -829,34 +815,7 @@ function renderRequest() {
     tb.append(h('textarea', { class: 'body', placeholder: '{ "id": "{{testIdNumber}}" }',
       onchange: (e) => { spec.body = { ...body, content: e.target.value }; if (!spec.body.content) spec.body = null; save(); } }, body.content || ''));
   } else if (S.tab === 'assertions') {
-    const asserts = spec.assertions || [];
-    const table = h('table', { class: 'kv' },
-      h('tr', {}, h('th', { style: 'width:110px' }, 'Type'), h('th', {}, 'Path / Name'), h('th', {}, 'Expected'), h('th', { style: 'width:30px' }, '')));
-    const sync = () => {
-      const next = [];
-      for (const tr of table.querySelectorAll('tr[data-row]')) {
-        const type = tr.querySelector('select').value;
-        const [p, eq] = tr.querySelectorAll('input');
-        const a = { type };
-        if (type === 'status') a.equals = parseInt(eq.value, 10) || 200;
-        else if (type === 'jsonpath') { a.path = p.value; a.equals = eq.value; }
-        else if (type === 'header') { a.name = p.value; a.equals = eq.value; }
-        else if (type === 'contains') a.contains = eq.value;
-        else if (type === 'max_ms') a.max_ms = parseInt(eq.value, 10) || 1000;
-        next.push(a);
-      }
-      spec.assertions = next; save();
-    };
-    const addRow = (a = { type: 'status', equals: 200 }) => {
-      table.append(h('tr', { 'data-row': 1 },
-        h('td', {}, h('select', { onchange: sync },
-          ['status', 'jsonpath', 'header', 'contains', 'max_ms'].map(t => h('option', { value: t, selected: a.type === t ? '' : undefined }, t)))),
-        h('td', {}, h('input', { type: 'text', value: a.path || a.name || '', placeholder: '$.result.status', onchange: sync })),
-        h('td', {}, h('input', { type: 'text', value: a.equals ?? a.contains ?? a.max_ms ?? '', onchange: sync })),
-        h('td', {}, h('button', { class: 'delRow', onclick: (e) => { e.target.closest('tr').remove(); sync(); } }, '✕'))));
-    };
-    asserts.forEach(addRow);
-    tb.append(table, h('button', { class: 'addRow', onclick: () => addRow() }, '+ Add assertion'));
+    tb.append(buildAssertionsEditor(spec, save));
   }
 
   // response card
@@ -1306,6 +1265,40 @@ function renderPresetView(id) {
   card.append(h('div', { class: 'note', style: 'margin-top:14px' },
     'Presets applied at the folder level are inherited by all requests within that folder unless overridden. Secret values are stored locally and never shown or exported.'));
   work.append(card);
+}
+
+/* ---------- shared assertion editor (request editor + test management) ---------- */
+function buildAssertionsEditor(spec, save) {
+  const asserts = spec.assertions || [];
+  const table = h('table', { class: 'kv' },
+    h('tr', {}, h('th', { style: 'width:110px' }, 'Type'), h('th', {}, 'Path / Name'), h('th', {}, 'Expected'), h('th', { style: 'width:30px' }, '')));
+  const sync = () => {
+    const next = [];
+    for (const tr of table.querySelectorAll('tr[data-row]')) {
+      const type = tr.querySelector('select').value;
+      const [p, eq] = tr.querySelectorAll('input');
+      const a = { type };
+      if (type === 'status') a.equals = parseInt(eq.value, 10) || 200;
+      else if (type === 'jsonpath') { a.path = p.value; a.equals = eq.value; }
+      else if (type === 'header') { a.name = p.value; a.equals = eq.value; }
+      else if (type === 'contains') a.contains = eq.value;
+      else if (type === 'max_ms') a.max_ms = parseInt(eq.value, 10) || 1000;
+      next.push(a);
+    }
+    spec.assertions = next; save();
+  };
+  const addRow = (a = { type: 'status', equals: 200 }) => {
+    table.append(h('tr', { 'data-row': 1 },
+      h('td', {}, h('select', { onchange: sync },
+        ['status', 'jsonpath', 'header', 'contains', 'max_ms'].map(t => h('option', { value: t, selected: a.type === t ? '' : undefined }, t)))),
+      h('td', {}, h('input', { type: 'text', value: a.path || a.name || '', placeholder: '$.result.status', onchange: sync })),
+      h('td', {}, h('input', { type: 'text', value: a.equals ?? a.contains ?? a.max_ms ?? '', onchange: sync })),
+      h('td', {}, h('button', { class: 'delRow', onclick: (e) => { e.target.closest('tr').remove(); sync(); } }, '✕'))));
+  };
+  asserts.forEach(addRow);
+  const frag = document.createDocumentFragment();
+  frag.append(table, h('button', { class: 'addRow', onclick: () => addRow() }, '+ Add assertion'));
+  return frag;
 }
 
 /* ---------- helpers ---------- */
