@@ -256,7 +256,12 @@ func ResolveAssertions(in []dsl.Assertion, scope *vars.Scope) ([]dsl.Assertion, 
 				return nil, fmt.Errorf("assertion %s: %w", a.Type, err)
 			}
 		}
-		for _, f := range []*string{&a.Path, &a.Name, &a.Contains} {
+		if s, ok := a.Exp.(string); ok {
+			if a.Exp, err = scope.Interpolate(s); err != nil {
+				return nil, fmt.Errorf("assertion %s: %w", a.Type, err)
+			}
+		}
+		for _, f := range []*string{&a.Path, &a.Name, &a.Contains, &a.Field, &a.Code} {
 			if *f == "" {
 				continue
 			}

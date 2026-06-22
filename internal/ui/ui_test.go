@@ -392,6 +392,121 @@ func TestMoveRequestToFolder(t *testing.T) {
 	}
 }
 
+func TestMatchesTagExpr(t *testing.T) {
+	cases := []struct {
+		tags []string
+		expr string
+		want bool
+	}{
+		{nil, "", true},
+		{[]string{"regression"}, "", true},
+		{[]string{"regression", "flaky"}, "regression,!flaky", false},
+		{[]string{"regression"}, "regression,!flaky", true},
+		{[]string{"smoke"}, "regression", false},
+		{[]string{"Regression"}, "regression", true}, // case-insensitive
+	}
+	for _, c := range cases {
+		if got := matchesTagExpr(c.tags, c.expr); got != c.want {
+			t.Errorf("matchesTagExpr(%v, %q) = %v, want %v", c.tags, c.expr, got, c.want)
+		}
+	}
+}
+
+func TestScopedRequests(t *testing.T) {
+	all := []store.Request{
+		{ID: 1, Spec: &dsl.Request{Name: "A", Tags: []string{"smoke"}}},
+		{ID: 2, Spec: &dsl.Request{Name: "B", Tags: []string{"regression"}}},
+		{ID: 3, Spec: &dsl.Request{Name: "C", Tags: []string{"regression", "flaky"}}},
+	}
+	out := scopedRequests(all, nil, "")
+	if len(out) != 3 {
+		t.Fatalf("no filter: got %d, want 3", len(out))
+	}
+	out = scopedRequests(all, []int64{1, 3}, "")
+	if len(out) != 2 || out[0].ID != 1 || out[1].ID != 3 {
+		t.Errorf("id filter: %+v", out)
+	}
+	out = scopedRequests(all, nil, "regression,!flaky")
+	if len(out) != 1 || out[0].ID != 2 {
+		t.Errorf("tag filter: %+v", out)
+	}
+}
+
+// newXrayCollection adds a second collection with one request, for the Xray
+// handler tests that don't need a live upstream.
+func newXrayCollection(t *testing.T, s *Server) (colID, reqID int64) {
+	t.Helper()
+	col := &store.Collection{Name: "Trace"}
+	if err := s.DB.CreateCollection(col); err != nil {
+		t.Fatal(err)
+	}
+	req := &store.Request{CollectionID: col.ID, Spec: &dsl.Request{Name: "Verify", Method: "GET", URL: "https://x.test/v"}}
+	if err := s.DB.CreateRequest(req); err != nil {
+		t.Fatal(err)
+	}
+	return col.ID, req.ID
+}
+
+func TestXrayPushWithoutConfig(t *testing.T) {
+	s, _ := newServer(t)
+	colID, _ := newXrayCollection(t, s)
+	rec, doc := call(t, s, "POST", "/api/xray/push", `{"collectionId":`+itoa(colID)+`}`)
+	if rec.Code != 422 {
+		t.Fatalf("expected 422 when xray not configured, got %d %v", rec.Code, doc)
+	}
+}
+
+func TestXrayPushEmptyScope(t *testing.T) {
+	s, _ := newServer(t)
+	colID, _ := newXrayCollection(t, s)
+	if err := s.DB.SaveXraySettings(store.XraySettings{ProjectKey: "AML"}); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("RELAY_XRAY_CLIENT_ID", "id")
+	t.Setenv("RELAY_XRAY_CLIENT_SECRET", "secret")
+	rec, doc := call(t, s, "POST", "/api/xray/push", `{"collectionId":`+itoa(colID)+`,"tags":"nope-matches-nothing"}`)
+	if rec.Code != 422 {
+		t.Fatalf("expected 422 for empty scope, got %d %v", rec.Code, doc)
+	}
+}
+
+func TestXrayTestGetRequiresKey(t *testing.T) {
+	s, _ := newServer(t)
+	rec, doc := call(t, s, "GET", "/api/xray/test", "")
+	if rec.Code != 400 {
+		t.Fatalf("expected 400 without key, got %d %v", rec.Code, doc)
+	}
+}
+
+func TestXrayTestGetRequiresConfig(t *testing.T) {
+	s, _ := newServer(t)
+	rec, doc := call(t, s, "GET", "/api/xray/test?key=AML-T1", "")
+	if rec.Code != 422 {
+		t.Fatalf("expected 422 when xray not configured, got %d %v", rec.Code, doc)
+	}
+}
+
+func TestXrayTestCreateMissingRequest(t *testing.T) {
+	s, _ := newServer(t)
+	if err := s.DB.SaveXraySettings(store.XraySettings{ProjectKey: "AML"}); err != nil {
+		t.Fatal(err)
+	}
+	rec, doc := call(t, s, "POST", "/api/xray/test", `{"requestId":99999,"summary":"x"}`)
+	if rec.Code != 404 {
+		t.Fatalf("expected 404 for missing request, got %d %v", rec.Code, doc)
+	}
+}
+
+func TestXrayRequirementsLinkNeedsExistingTest(t *testing.T) {
+	s, _ := newServer(t)
+	_, reqID := newXrayCollection(t, s)
+	rec, doc := call(t, s, "POST", "/api/xray/requirements/link",
+		`{"requestId":`+itoa(reqID)+`,"requirementKeys":["AML-1"]}`)
+	if rec.Code != 422 {
+		t.Fatalf("expected 422 without a linked Xray test, got %d %v", rec.Code, doc)
+	}
+}
+
 func TestSettingsControlTLSAndTimeout(t *testing.T) {
 	s, _ := newServer(t)
 

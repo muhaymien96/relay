@@ -36,6 +36,10 @@ type Request struct {
 	Priority     string   `toml:"priority" json:"priority,omitempty"` // low | med | high
 	XrayKey      string   `toml:"xray_key" json:"xrayKey,omitempty"`
 	Requirements []string `toml:"requirements" json:"requirements,omitempty"`
+	// XrayPlan/XraySet override the collection-level Xray test plan/test set
+	// for this request. Empty means "inherit from collection.toml".
+	XrayPlan string `toml:"xray_plan" json:"xrayPlan,omitempty"`
+	XraySet  string `toml:"xray_set" json:"xraySet,omitempty"`
 
 	// Path is where the request was loaded from (not serialized).
 	Path string `toml:"-" json:"-"`
@@ -70,10 +74,30 @@ type FormField struct {
 }
 
 // Assertion is one post-response check.
+//
+// Type is one of: status | jsonpath | header | contains | max_ms (legacy,
+// operator-less forms) or status | header | json | text | timing | forall |
+// exists | count | script (current forms, which carry an explicit Op).
+//
+// Op selects the comparison within a type (e.g. status: equals|is2xx|oneof;
+// header: equals|contains|exists; json: equals|gt|lengthGt|exists; text:
+// contains|notcontains; count: ==|>|<). Field/Sub are used by forall/exists
+// to compare a field within each array item (item[Field] Sub Exp). Code
+// holds a JS snippet for type "script", evaluated via the same pm.* runtime
+// as request-level test scripts.
+//
+// Equals/Contains/MaxMs are kept for backward compatibility with .req.toml
+// files written before Op/Exp existed; evalOne falls back to them when Op
+// and Exp are both unset.
 type Assertion struct {
-	Type     string `toml:"type" json:"type"` // status | jsonpath | header | contains | max_ms
+	Type     string `toml:"type" json:"type"`
+	Op       string `toml:"op,omitempty" json:"op,omitempty"`
 	Path     string `toml:"path" json:"path,omitempty"`
 	Name     string `toml:"name" json:"name,omitempty"`
+	Field    string `toml:"field,omitempty" json:"field,omitempty"`
+	Sub      string `toml:"sub,omitempty" json:"sub,omitempty"`
+	Exp      any    `toml:"exp,omitempty" json:"exp,omitempty"`
+	Code     string `toml:"code,omitempty" json:"code,omitempty"`
 	Equals   any    `toml:"equals" json:"equals,omitempty"`
 	Contains string `toml:"contains" json:"contains,omitempty"`
 	MaxMs    int64  `toml:"max_ms" json:"max_ms,omitempty"`
