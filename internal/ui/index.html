@@ -307,6 +307,80 @@
   .note { background: #f1f2f9; border-radius: 7px; padding: 9px 12px; color: var(--dim); font-style: italic; }
   .empty { color: var(--dim); padding: 40px; text-align: center; }
 
+  /* assertion builder */
+  table.asrt { width: 100%; border-collapse: collapse; }
+  table.asrt th { text-align: left; font-size: 10px; letter-spacing: .08em; color: var(--dim);
+                  text-transform: uppercase; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+  table.asrt td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .asrtType { font-size: 10px; font-weight: 700; letter-spacing: .03em; border-radius: 4px; padding: 2px 7px;
+              background: var(--ink-soft); color: var(--ink); white-space: nowrap; }
+  .asrtType.forall, .asrtType.exists { background: #f3eefe; color: var(--purple); }
+  .asrtType.count { background: #eaf4ff; color: var(--blue); }
+  .asrtType.script { background: #fdf3e6; color: var(--amber); }
+  .asrtType.timing { background: #e7f7f0; color: var(--green); }
+  .asrtFields { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .asrtFields input[type=text] { font-family: var(--mono); font-size: 12px; padding: 4px 7px; max-width: 140px; }
+  .asrtFields input.path { max-width: 170px; }
+  .asrtFields select { font-size: 12px; padding: 4px 6px; }
+  .asrtFields .unit { color: var(--faint); font-size: 11px; }
+  .asrtRes { white-space: nowrap; }
+  .celLine { font-family: var(--mono); font-size: 10.5px; color: var(--faint); margin-top: 4px; word-break: break-all; }
+  .scriptEd, .celEd { width: 100%; min-height: 90px; font-family: var(--mono); font-size: 12px;
+                       border: 1px solid var(--line2); border-radius: 7px; padding: 8px; resize: vertical; }
+  .viewSeg { display: flex; gap: 2px; border: 1px solid var(--line2); border-radius: 7px; padding: 2px; margin-left: 8px; }
+  .viewSeg button { border: 0; background: none; padding: 4px 10px; border-radius: 5px; font-size: 11px; font-weight: 600; color: var(--dim); }
+  .viewSeg button.on { background: var(--ink); color: #fff; }
+  .compiledHd { display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-bottom: 1px solid var(--line);
+                font-size: 11px; color: var(--dim); }
+  .compiledHd .lang { font-family: var(--mono); font-weight: 700; color: var(--ink); background: var(--ink-soft);
+                       border-radius: 4px; padding: 1px 7px; }
+  .celPre { font-family: var(--mono); font-size: 12.5px; white-space: pre-wrap; padding: 14px; margin: 0; }
+  .fromRespBtn { border: 1px solid var(--line2); background: #fff; border-radius: 7px; padding: 3px 10px;
+                 font-size: 11px; font-weight: 600; color: var(--dim); margin-left: auto; }
+  .fromRespBtn:hover { color: var(--ink); border-color: var(--ink); }
+  .tok-obj { color: var(--blue); } .tok-mac { color: var(--purple); font-weight: 600; }
+  .tok-str { color: #0d7a52; } .tok-num { color: #b45309; } .tok-kw { color: var(--faint); font-style: italic; }
+
+  /* clickable response tree */
+  .jtree { font-family: var(--mono); font-size: 12px; max-height: 50vh; overflow: auto;
+           border: 1px solid var(--line); border-radius: 8px; padding: 6px 0; }
+  .jrow { display: flex; align-items: center; gap: 6px; padding: 2px 10px; white-space: nowrap; }
+  .jkey { color: var(--ink); font-weight: 600; }
+  .jpunct { color: var(--faint); }
+  .jcount { color: var(--faint); font-size: 10.5px; }
+  .jval { border-radius: 4px; padding: 0 4px; cursor: pointer; }
+  .jval:hover { background: var(--ink-soft); outline: 1px dashed var(--ink); }
+  .jval.str { color: #0d7a52; } .jval.num { color: #b45309; } .jval.bool { color: var(--purple); } .jval.null { color: var(--faint); }
+  .jtool { border: 1px solid var(--line2); background: #fff; border-radius: 99px; padding: 1px 8px;
+           font-size: 10px; font-weight: 600; color: var(--dim); margin-left: 4px; }
+  .jtool:hover { color: var(--ink); border-color: var(--ink); }
+
+  /* traceability */
+  .traceActions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; align-items: center; }
+  .btn.sm { padding: 5px 11px; font-size: 12px; }
+  .valMsg { font-size: 11.5px; font-weight: 600; }
+  .valMsg.ok { color: var(--green); } .valMsg.bad { color: var(--red); }
+
+  /* test list indicators */
+  .lastDot { width: 7px; height: 7px; border-radius: 99px; flex: none; background: var(--line2); }
+  .lastDot.pass { background: var(--green); } .lastDot.fail { background: var(--red); }
+  .xrayTag { font-family: var(--mono); font-size: 9.5px; color: var(--ink); background: var(--ink-soft);
+             border-radius: 4px; padding: 0 5px; margin-left: auto; }
+  .unlinkedDot { width: 6px; height: 6px; border-radius: 99px; background: var(--line2); margin-left: auto; }
+
+  /* run scope / push */
+  .tagExpr { width: 100%; font-family: var(--mono); font-size: 11.5px; margin-top: 6px; }
+  .willRun { font-size: 11px; color: var(--dim); margin-top: 6px; }
+  .mapRow { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 11.5px; }
+  .mapRow .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mapRow .key { font-family: var(--mono); color: var(--dim); }
+  .maptag { font-size: 9.5px; font-weight: 700; border-radius: 4px; padding: 1px 6px; text-transform: uppercase; }
+  .maptag.linked { background: #e7f7f0; color: var(--green); }
+  .maptag.create { background: #fdf3e6; color: var(--amber); }
+  .maptag.missing { background: #fdecec; color: var(--red); }
+  .pushStat { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 11.5px; }
+  .execKey { font-family: var(--mono); font-weight: 700; color: var(--ink); }
+
   /* ---- context menu ---- */
   #ctxMenu { position: fixed; z-index: 9999; background: var(--panel); border: 1px solid var(--line2);
              border-radius: 10px; padding: 4px; min-width: 180px; display: none;
@@ -402,12 +476,14 @@ const h = (tag, attrs = {}, ...kids) => {
     else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
     else if (k === 'value') el.value = v;
     else if (k === 'checked') el.checked = !!v;
+    else if (k === 'html') el.innerHTML = v;
     else if (v !== undefined && v !== null) el.setAttribute(k, v);
   }
-  for (const k of kids.flat()) el.append(k);
+  for (const k of kids.flat()) if (k !== null && k !== undefined) el.append(k);
   return el;
 };
 const esc = (s) => String(s ?? '');
+const escHtml = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const METHODS = ['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS'];
 
 /* ---------- context menu ---------- */
@@ -780,6 +856,234 @@ function renderSide() {
 }
 
 /* ---------- test management ---------- */
+
+/* ---- assertion type tables ---- */
+const ASRT_TYPES = ['status', 'header', 'json', 'text', 'timing', 'forall', 'exists', 'count', 'script'];
+const TYPE_LABEL = { status: 'Status', header: 'Header', json: 'JSON body', text: 'Text body', timing: 'Timing',
+  forall: 'For all', exists: 'Any', count: 'Count', script: 'Script' };
+const OPS = {
+  status: { equals: 'equals', is2xx: 'is 2xx', oneof: 'is one of' },
+  header: { equals: 'equals', contains: 'contains', exists: 'exists' },
+  json:   { equals: 'equals', gt: '>', lengthGt: 'length >', exists: 'exists' },
+  text:   { contains: 'contains', notcontains: 'does not contain' },
+  timing: { '<': '<' },
+  count:  { '==': 'equals', '>': '>', '<': '<' },
+};
+const SUBOPS = { '>': '>', '<': '<', '>=': '≥', '<=': '≤', '==': 'equals', '!=': '≠' };
+const ASRT_DEFAULTS = {
+  status: { type: 'status', op: 'equals', exp: '200' },
+  header: { type: 'header', name: 'Content-Type', op: 'contains', exp: 'application/json' },
+  json:   { type: 'json', path: '$.', op: 'equals', exp: '' },
+  text:   { type: 'text', op: 'contains', exp: '' },
+  timing: { type: 'timing', op: '<', exp: '2000' },
+  forall: { type: 'forall', path: '$.checks', field: 'passed', sub: '==', exp: 'true' },
+  exists: { type: 'exists', path: '$.matches', field: 'confidence', sub: '>', exp: '0.8' },
+  count:  { type: 'count', path: '$.matches', op: '==', exp: '0' },
+  script: { type: 'script', code: '' },
+};
+
+// normalizeAssertion migrates legacy-shaped assertions (jsonpath/contains/max_ms
+// with equals/contains/max_ms fields) into the current type/op/exp shape, in place.
+function normalizeAssertion(a) {
+  if (a.type === 'jsonpath') { a.type = 'json'; a.op = a.op || 'equals'; if (a.exp === undefined) a.exp = a.equals; }
+  else if (a.type === 'contains') { a.type = 'text'; a.op = a.op || 'contains'; if (a.exp === undefined) a.exp = a.contains; }
+  else if (a.type === 'max_ms') { a.type = 'timing'; a.op = a.op || '<'; if (a.exp === undefined) a.exp = a.max_ms; }
+  else if (a.type === 'header' && a.exp === undefined && a.equals !== undefined) a.exp = a.equals;
+  else if (a.type === 'status' && a.exp === undefined && a.equals !== undefined) a.exp = a.equals;
+  if (a.exp === undefined || a.exp === null) a.exp = a.equals ?? a.contains ?? a.max_ms ?? '';
+  return a;
+}
+
+/* ---- CEL compiler (visual rows -> readable, diffable expression) ---- */
+function pathToCEL(p) {
+  if (!p) return 'response.body';
+  let s = String(p).replace(/^\$\.?/, '');
+  if (!s) return 'response.body';
+  const parts = [];
+  s.split('.').forEach(seg => {
+    const m = seg.match(/^([\w$]+)?(\[[^\]]*\])?$/);
+    if (m) parts.push((m[1] ? '.' + m[1] : '') + (m[2] || ''));
+    else parts.push('.' + seg);
+  });
+  return 'response.body' + parts.join('');
+}
+function celVal(v) {
+  if (v === '' || v == null) return '""';
+  if (/^-?\d+(\.\d+)?$/.test(String(v).trim())) return String(v).trim();
+  if (/^(true|false)$/.test(String(v).trim())) return String(v).trim();
+  return JSON.stringify(String(v));
+}
+function celList(v) { return '[' + String(v).split(',').map(s => s.trim()).filter(Boolean).join(', ') + ']'; }
+function toCEL(a) {
+  switch (a.type) {
+    case 'status':
+      if (a.op === 'is2xx') return 'response.status >= 200 && response.status < 300';
+      if (a.op === 'oneof') return 'response.status in ' + celList(a.exp);
+      return 'response.status == ' + (a.exp || '200');
+    case 'header': {
+      const hk = 'response.headers[' + JSON.stringify(a.name || '') + ']';
+      if (a.op === 'exists') return 'has(' + hk + ')';
+      if (a.op === 'contains') return hk + '.contains(' + celVal(a.exp) + ')';
+      return hk + ' == ' + celVal(a.exp);
+    }
+    case 'json': {
+      const acc = pathToCEL(a.path);
+      if (a.op === 'exists') return 'has(' + acc + ')';
+      if (a.op === 'gt') return acc + ' > ' + celVal(a.exp);
+      if (a.op === 'lengthGt') return 'size(' + acc + ') > ' + celVal(a.exp);
+      return acc + ' == ' + celVal(a.exp);
+    }
+    case 'text':
+      return (a.op === 'notcontains' ? '!' : '') + 'response.text.contains(' + celVal(a.exp) + ')';
+    case 'timing':
+      return 'response.time < ' + (a.exp || '2000');
+    case 'forall':
+      return pathToCEL(a.path) + '.all(i, i.' + (a.field || 'value') + ' ' + (a.sub || '==') + ' ' + celVal(a.exp) + ')';
+    case 'exists':
+      return pathToCEL(a.path) + '.exists(i, i.' + (a.field || 'value') + ' ' + (a.sub || '==') + ' ' + celVal(a.exp) + ')';
+    case 'count':
+      return 'size(' + pathToCEL(a.path) + ') ' + (a.op || '==') + ' ' + (a.exp || '0');
+    case 'script': return null;
+  }
+  return '';
+}
+function assertionsToCEL(asserts) {
+  const preds = (asserts || []).filter(a => a.type !== 'script').map(toCEL).filter(Boolean);
+  return preds.length ? preds.join(' &&\n') : '// no compilable assertions';
+}
+function toScriptLine(a) {
+  const E = x => 'relay.expect(' + x + ')';
+  switch (a.type) {
+    case 'status':
+      if (a.op === 'is2xx') return E('response.status') + '.toBeLevel2xx();';
+      if (a.op === 'oneof') return E('response.status') + '.toBeOneOf(' + celList(a.exp) + ');';
+      return E('response.status') + '.toEqual(' + (a.exp || '200') + ');';
+    case 'header': {
+      const hk = 'response.headers[' + JSON.stringify(a.name || '') + ']';
+      if (a.op === 'exists') return E(hk) + '.toBeDefined();';
+      if (a.op === 'contains') return E(hk) + '.toContain(' + celVal(a.exp) + ');';
+      return E(hk) + '.toEqual(' + celVal(a.exp) + ');';
+    }
+    case 'json': {
+      const acc = pathToCEL(a.path);
+      if (a.op === 'exists') return E(acc) + '.toBeDefined();';
+      if (a.op === 'gt') return E(acc) + '.toBeGreaterThan(' + celVal(a.exp) + ');';
+      if (a.op === 'lengthGt') return E(acc + '.length') + '.toBeGreaterThan(' + celVal(a.exp) + ');';
+      return E(acc) + '.toEqual(' + celVal(a.exp) + ');';
+    }
+    case 'text':
+      return E('response.text') + (a.op === 'notcontains' ? '.not' : '') + '.toContain(' + celVal(a.exp) + ');';
+    case 'timing':
+      return E('response.time') + '.toBeLessThan(' + (a.exp || '2000') + ');';
+    case 'forall':
+      return E(pathToCEL(a.path) + '.every(i => i.' + (a.field || 'value') + ' ' + (a.sub || '==') + ' ' + celVal(a.exp) + ')') + '.toBe(true);';
+    case 'exists':
+      return E(pathToCEL(a.path) + '.some(i => i.' + (a.field || 'value') + ' ' + (a.sub || '==') + ' ' + celVal(a.exp) + ')') + '.toBe(true);';
+    case 'count':
+      return E(pathToCEL(a.path) + '.length') + '.toBe' + (a.op === '>' ? 'GreaterThan' : a.op === '<' ? 'LessThan' : '') + '(' + (a.exp || '0') + ');';
+  }
+  return '';
+}
+function assertionsToScript(test, asserts) {
+  const lines = (asserts || []).filter(a => a.type !== 'script' && a.type).map(a => '  ' + toScriptLine(a));
+  const custom = (asserts || []).filter(a => a.type === 'script' && a.code)
+    .map(a => '  ' + a.code.trim().split('\n').join('\n  '));
+  return 'relay.test(' + JSON.stringify(test) + ', () => {\n' +
+    lines.join('\n') + (custom.length ? '\n  // — advanced (escape hatch) —\n' + custom.join('\n') : '') +
+    '\n});';
+}
+function hlCEL(s) {
+  s = escHtml(s);
+  s = s.replace(/(^|\n)(\s*\/\/[^\n]*)/g, '$1<span class="tok-kw">$2</span>');
+  s = s.replace(/\b(response|request|i)\b(?=\.|\b)/g, '<span class="tok-obj">$1</span>');
+  s = s.replace(/\b(all|exists|exists_one|filter|map|has|size|in)\b/g, '<span class="tok-mac">$1</span>');
+  s = s.replace(/&quot;([^&]*?)&quot;/g, '<span class="tok-str">&quot;$1&quot;</span>');
+  s = s.replace(/\b(\d+(?:\.\d+)?)\b/g, '<span class="tok-num">$1</span>');
+  return s;
+}
+
+/* ---- clickable response tree -> assertion authoring ---- */
+function jsonType(v) {
+  if (v === null) return 'null';
+  if (Array.isArray(v)) return 'array';
+  return typeof v === 'object' ? 'object' : typeof v;
+}
+function valClass(v) {
+  const tp = jsonType(v);
+  return tp === 'string' ? 'str' : (tp === 'number' ? 'num' : (tp === 'boolean' ? 'bool' : 'null'));
+}
+function valText(v) { return jsonType(v) === 'string' ? JSON.stringify(v) : String(v); }
+function lastSeg(p) { const m = String(p).match(/(?:\.([\w$]+)|\[(\d+)\])$/); return m ? (m[1] || ('[' + m[2] + ']')) : p; }
+function guessField(arr) {
+  const o = arr.find(x => x && typeof x === 'object');
+  if (!o) return 'value';
+  if ('passed' in o) return 'passed';
+  if ('confidence' in o) return 'confidence';
+  return Object.keys(o)[0] || 'value';
+}
+function renderJsonNode(parent, val, path, depth, onAdd) {
+  const pad = (depth * 16 + 2) + 'px';
+  const tp = jsonType(val);
+  if (tp === 'object' || tp === 'array') {
+    const entries = tp === 'array' ? val.map((v, i) => [i, v]) : Object.entries(val);
+    const isArr = tp === 'array';
+    const headRow = h('div', { class: 'jrow', style: 'padding-left:' + pad },
+      h('span', { class: 'jkey' }, path === '$' ? '$' : lastSeg(path)),
+      h('span', { class: 'jpunct' }, isArr ? '[' : '{'),
+      h('span', { class: 'jcount' }, entries.length + (isArr ? ' item' + (entries.length === 1 ? '' : 's') : ' key' + (entries.length === 1 ? '' : 's'))));
+    if (isArr) {
+      headRow.append(
+        h('button', { class: 'jtool', title: 'Assert every item: ' + path + '.all(i, …)',
+          onclick: () => { const field = guessField(val); onAdd({ type: 'forall', path, field, sub: '==', exp: field === 'passed' ? 'true' : '' }); } }, '∀ for-all'),
+        h('button', { class: 'jtool', title: 'Assert item count',
+          onclick: () => onAdd({ type: 'count', path, op: '==', exp: String(entries.length) }) }, 'count'),
+        h('button', { class: 'jtool', title: 'Assert non-empty',
+          onclick: () => onAdd({ type: 'count', path, op: '>', exp: '0' }) }, 'non-empty'));
+    }
+    parent.append(headRow);
+    for (const [k, v] of entries) {
+      const childPath = isArr ? path + '[' + k + ']' : path + '.' + k;
+      renderJsonNode(parent, v, childPath, depth + 1, onAdd);
+    }
+    parent.append(h('div', { class: 'jrow', style: 'padding-left:' + pad }, h('span', { class: 'jpunct' }, isArr ? ']' : '}')));
+  } else {
+    const row = h('div', { class: 'jrow', style: 'padding-left:' + pad },
+      h('span', { class: 'jkey' }, lastSeg(path)), h('span', { class: 'jpunct' }, ':'),
+      h('span', { class: 'jval ' + valClass(val), role: 'button', tabindex: '0',
+        title: 'Add assertion: ' + pathToCEL(path) + ' == ' + celVal(tp === 'string' ? val : String(val)),
+        onclick: () => onAdd({ type: 'json', path, op: 'equals', exp: tp === 'string' ? val : String(val) }),
+        onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } },
+      }, valText(val)));
+    if (tp === 'number') row.append(
+      h('button', { class: 'jtool', title: 'Assert greater-than',
+        onclick: () => onAdd({ type: 'json', path, op: 'gt', exp: String(val) }) }, '>'));
+    parent.append(row);
+  }
+}
+// openAssertFromResponse opens a transient overlay with a clickable JSON tree
+// built from the test's last real send (S.lastTestRun / history), letting the
+// user add assertions by clicking values instead of typing jsonpaths by hand.
+function openAssertFromResponse(sample, onAdded) {
+  const overlay = h('div', { class: 'modal-overlay open' });
+  const box = h('div', { class: 'modal-box', style: 'max-width:640px' });
+  let added = 0;
+  const addedLbl = h('span', { style: 'font-size:12px;color:var(--green);font-weight:600' }, '');
+  box.append(h('p', { class: 'modal-title' }, 'Assert from response'));
+  box.append(h('div', { class: 'fhint', style: 'margin-bottom:10px' },
+    'Click any value to add an equality assertion on its $JSONPath. Arrays offer ∀ for-all and count.'));
+  const tree = h('div', { class: 'jtree', role: 'tree' });
+  renderJsonNode(tree, sample, '$', 0, (a) => {
+    added++; addedLbl.textContent = added + ' added';
+    onAdded(a);
+  });
+  box.append(tree);
+  box.append(h('div', { class: 'modal-actions', style: 'margin-top:14px' }, addedLbl,
+    h('button', { class: 'btn dark', onclick: () => overlay.remove() }, 'Done')));
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  overlay.append(box);
+  document.body.append(overlay);
+}
+
 function allTests() {
   const out = [];
   for (const c of S.state.collections || [])
@@ -800,6 +1104,7 @@ function filteredTests() {
       if (chip === 'noxray' && full && full.spec.xrayKey) return false;
       if (chip === 'hasassert' && !(full && (full.spec.assertions || []).length)) return false;
       if (chip === 'tagged' && !(full && (full.spec.tags || []).length)) return false;
+      if (chip === 'reqs' && !(full && (full.spec.requirements || []).length)) return false;
     }
     return true;
   });
@@ -808,7 +1113,7 @@ function renderTestsSide(list) {
   list.append(h('div', { style: 'padding:0 8px 8px' },
     h('input', { type: 'text', placeholder: 'Search tests…', style: 'width:100%', value: S.testSearch || '',
       oninput: (e) => { S.testSearch = e.target.value; renderSide(); } })));
-  const chipDefs = [['failed', 'Failed last run'], ['noxray', 'No Xray link'], ['hasassert', 'Has assertions'], ['tagged', 'Tagged']];
+  const chipDefs = [['failed', 'Failed last run'], ['noxray', 'No Xray link'], ['hasassert', 'Has assertions'], ['tagged', 'Tagged'], ['reqs', 'Requirement']];
   const chips = h('div', { class: 'chips', style: 'padding:0 8px 10px' });
   S.testChips = S.testChips || [];
   for (const [key, label] of chipDefs) {
@@ -820,10 +1125,17 @@ function renderTestsSide(list) {
   }
   list.append(chips);
   for (const { col, meta } of filteredTests()) {
+    const full = S.testFull && S.testFull[meta.id];
+    const failed = testFailedLastRun(meta.id);
+    const hasHist = (S.history || []).some(x => x.requestId === meta.id);
+    const last = hasHist ? (failed ? 'fail' : 'pass') : '';
+    const xrayKey = full && full.spec.xrayKey;
     list.append(h('div', { class: 'reqRow' + (meta.id === S.testId ? ' on' : ''), onclick: () => openTest(meta.id) },
+      h('span', { class: 'lastDot ' + last, title: hasHist ? ('Last run: ' + (failed ? 'fail' : 'pass')) : 'Never run' }),
       h('span', { class: 'method m-' + meta.method }, meta.method),
       h('span', { class: 'nm' }, meta.name),
-      h('small', { style: 'color:var(--faint);margin-left:auto' }, col.name)));
+      xrayKey ? h('span', { class: 'xrayTag', title: 'Linked to ' + xrayKey }, xrayKey)
+              : h('span', { class: 'unlinkedDot', title: 'No Xray link' })));
   }
   if (!filteredTests().length) list.append(h('div', { class: 'histRow' }, h('small', {}, 'No tests match')));
 }
@@ -922,35 +1234,12 @@ function renderTestEditor(full) {
   work.append(ownerCard);
 
   // Assertions (live editor, shared with the request editor's assertions tab)
-  const asserts = spec.assertions || [];
-  const assertCard = h('div', { class: 'card', style: 'padding:14px' },
-    h('div', { style: 'display:flex;align-items:center;gap:8px;margin-bottom:8px' },
-      h('div', { class: 'lbl', style: 'font-size:10px;letter-spacing:.1em;color:var(--dim);font-weight:700' }, 'ASSERTIONS'),
-      h('span', { class: 'n', style: 'background:var(--ink-soft);color:var(--ink);border-radius:99px;font-size:10px;padding:0 6px' }, String(asserts.length))));
-  assertCard.append(buildAssertionsEditor(spec, save));
+  const assertCard = h('div', { class: 'card', style: 'padding:14px' });
+  assertCard.append(buildAssertionsEditor(full, spec, save));
   work.append(assertCard);
 
   // Traceability
-  const traceCard = h('div', { class: 'card', style: 'padding:14px' },
-    h('div', { class: 'lbl', style: 'font-size:10px;letter-spacing:.1em;color:var(--dim);font-weight:700;margin-bottom:8px' }, 'TRACEABILITY'),
-    h('div', { class: 'formRow' }, h('label', {}, 'Xray key'),
-      h('input', { type: 'text', value: spec.xrayKey || '', placeholder: 'PROJ-123', onchange: (e) => { spec.xrayKey = e.target.value; save(); } })));
-  traceCard.append(h('div', { class: 'note' }, 'Xray push integration is not implemented yet — this field is plain metadata stored with the test.'));
-  const reqChips = h('div', { class: 'chips', style: 'margin-top:10px' });
-  const renderReqs = () => {
-    reqChips.innerHTML = '';
-    for (const rq of spec.requirements || []) {
-      reqChips.append(h('span', { class: 'att on' }, rq + ' ',
-        h('button', { class: 'delRow', onclick: () => { spec.requirements = spec.requirements.filter(x => x !== rq); save(); renderReqs(); } }, ' ✕')));
-    }
-    reqChips.append(h('button', { class: 'att', onclick: () => {
-      const rq = prompt('Requirement id'); if (!rq) return;
-      spec.requirements = [...(spec.requirements || []), rq]; save(); renderReqs();
-    } }, '+ Add requirement'));
-  };
-  renderReqs();
-  traceCard.append(reqChips);
-  work.append(traceCard);
+  work.append(traceCardSection(full, spec, save));
 
   // Last run
   const lastEntry = (S.history || []).find(e => e.requestId === full.id);
@@ -991,6 +1280,50 @@ function renderTestMeta(full) {
       [h('option', { value: '' }, 'No environment'), ...(S.state.environments || []).map(e =>
         h('option', { value: e.name, selected: e.name === S.envName ? '' : undefined }, e.name))])));
   m.append(h('button', { class: 'btn dark', id: 'testRunBtn', style: 'width:100%', onclick: () => runTest(full) }, 'Run'));
+
+  // — push to Xray —
+  const meta = findReqMeta(full.id);
+  if (!meta) return;
+  S.pushScope = S.pushScope || 'selected';
+  S.pushTagExpr = S.pushTagExpr ?? '';
+  m.append(h('h3', { style: 'margin-top:18px' }, 'Push to Xray'));
+  const scopeSel = h('select', { style: 'width:100%', onchange: (e) => { S.pushScope = e.target.value; renderTestMeta(full); } },
+    [h('option', { value: 'selected', selected: S.pushScope === 'selected' ? '' : undefined }, 'This test'),
+     h('option', { value: 'collection', selected: S.pushScope === 'collection' ? '' : undefined }, 'Whole collection: ' + meta.col.name)]);
+  m.append(h('div', { class: 'metaCard' }, h('span', { class: 'lbl' }, 'Scope'), scopeSel));
+  if (S.pushScope === 'collection') {
+    m.append(h('input', { type: 'text', class: 'tagExpr', placeholder: 'tag filter e.g. regression,!flaky', value: S.pushTagExpr,
+      oninput: (e) => { S.pushTagExpr = e.target.value; } }));
+  }
+  const previewBox = h('div', {});
+  m.append(previewBox);
+
+  const runPush = async (dryRun) => {
+    previewBox.innerHTML = '';
+    const body = { collectionId: meta.col.id, env: S.envName, summary: pushSummaryFor(full), dryRun };
+    if (S.pushScope === 'selected') body.requestIds = [full.id];
+    else if (S.pushTagExpr) body.tags = S.pushTagExpr;
+    try {
+      const r = await api('/api/xray/push', { method: 'POST', body });
+      if (dryRun) {
+        previewBox.append(h('div', { class: 'willRun' }, (r.rows || []).length + ' test(s) will be pushed:'));
+        for (const row of r.rows || []) {
+          previewBox.append(h('div', { class: 'mapRow' },
+            h('span', { class: 'nm' }, row.name),
+            row.xrayKey ? h('span', { class: 'key' }, row.xrayKey) : null,
+            h('span', { class: 'maptag ' + row.status }, row.status)));
+        }
+      } else {
+        previewBox.append(h('div', { class: 'pushStat' }, '✓ Pushed execution ', h('span', { class: 'execKey' }, r.executionKey)));
+        toast('Pushed to Xray: ' + r.executionKey);
+      }
+    } catch (e) { toast(e.message, true); previewBox.append(h('div', { class: 'note' }, e.message)); }
+  };
+  m.append(h('button', { class: 'btn', style: 'width:100%;margin-top:8px', onclick: () => runPush(true) }, 'Preview push'));
+  m.append(h('button', { class: 'btn dark', style: 'width:100%;margin-top:6px', onclick: () => runPush(false) }, 'Push to Xray'));
+}
+function pushSummaryFor(full) {
+  return 'Relay run: ' + (full.spec.name || 'test');
 }
 
 async function runTest(full) {
@@ -1427,7 +1760,7 @@ function renderRequest() {
       tb.append(rawBody);
     }
   } else if (S.tab === 'assertions') {
-    tb.append(buildAssertionsEditor(spec, () => { setReqDirty(true); save(); }));
+    tb.append(buildAssertionsEditor(S.req, spec, () => { setReqDirty(true); save(); }));
   } else if (S.tab === 'scripts') {
     const scripts = { preRequest: '', tests: '', ...(spec.scripts || {}) };
     tb.append(renderScriptsTab(spec, scripts, () => { setReqDirty(true); save(); }));
@@ -1931,10 +2264,20 @@ async function renderSettingsView() {
       onchange: (e) => { xs[key] = e.target.value; saveXray(); } }));
   xcard.append(xrow('Project key', 'projectKey', 'AML'));
   xcard.append(xrow('Test plan key', 'testPlanKey', 'AML-88 (optional)'));
+  xcard.append(xrow('Test set key', 'testSetKey', 'AML-90 (optional)'));
   xcard.append(xrow('Cloud URL override', 'cloudUrl', 'leave empty for default Xray Cloud'));
   xcard.append(h('div', { class: 'note', style: 'margin-top:10px' },
     h('b', {}, 'Credentials: '),
     'set RELAY_XRAY_CLIENT_ID and RELAY_XRAY_CLIENT_SECRET environment variables before starting relay ui.'));
+
+  xcard.append(h('h2', { style: 'margin:18px 0 4px;font-family:var(--mono)' }, 'Jira (requirement links)'));
+  xcard.append(h('div', { style: 'color:var(--dim);margin-bottom:10px' },
+    'Used by "Link requirements" in Test Management to call the Jira issueLink REST API directly.'));
+  xcard.append(xrow('Jira base URL', 'jiraBaseUrl', 'https://yourorg.atlassian.net'));
+  xcard.append(xrow('Jira email', 'jiraEmail', 'you@yourorg.com'));
+  xcard.append(h('div', { class: 'note', style: 'margin-top:10px' },
+    h('b', {}, 'API token: '),
+    'set RELAY_JIRA_API_TOKEN before starting relay ui — never entered or stored here.'));
   work.append(xcard);
 }
 
@@ -2060,24 +2403,46 @@ async function runCollection(col) {
       list.append(h('div', { class: 'runErr' }, `pm.test "${t.name}": ${t.error || 'failed'}`));
   }
 
-  const xrayPushBtn = h('button', { class: 'btn dark', style: 'margin-left:auto',
+  S.colPushTagExpr = S.colPushTagExpr || '';
+  const tagInput = h('input', { type: 'text', class: 'tagExpr', placeholder: 'tag filter e.g. regression,!flaky', value: S.colPushTagExpr,
+    oninput: (e) => { S.colPushTagExpr = e.target.value; } });
+  const previewBox = h('div', {});
+  const previewBtn = h('button', { class: 'btn', onclick: async () => {
+    previewBox.innerHTML = '';
+    try {
+      const r = await api('/api/xray/push', { method: 'POST',
+        body: { collectionId: col.id, env: S.envName, tags: S.colPushTagExpr, dryRun: true } });
+      previewBox.append(h('div', { class: 'willRun' }, (r.rows || []).length + ' test(s) will be pushed:'));
+      for (const row of r.rows || []) {
+        previewBox.append(h('div', { class: 'mapRow' },
+          h('span', { class: 'nm' }, row.name),
+          row.xrayKey ? h('span', { class: 'key' }, row.xrayKey) : null,
+          h('span', { class: 'maptag ' + row.status }, row.status)));
+      }
+    } catch (e) { toast(e.message, true); }
+  } }, 'Preview push');
+  const xrayPushBtn = h('button', { class: 'btn dark',
     onclick: async () => {
       xrayPushBtn.disabled = true; xrayPushBtn.textContent = 'Pushing…';
       try {
         const r = await api('/api/xray/push', { method: 'POST',
-          body: { collectionId: col.id, env: S.envName } });
+          body: { collectionId: col.id, env: S.envName, tags: S.colPushTagExpr } });
         toast('Pushed to Xray: ' + r.executionKey);
         xrayPushBtn.textContent = '✓ Pushed: ' + r.executionKey;
+        previewBox.innerHTML = '';
+        previewBox.append(h('div', { class: 'pushStat' }, '✓ Pushed execution ', h('span', { class: 'execKey' }, r.executionKey)));
       } catch (e) {
         toast(e.message, true);
-        xrayPushBtn.textContent = 'Push execution'; xrayPushBtn.disabled = false;
+        xrayPushBtn.textContent = 'Push to Xray'; xrayPushBtn.disabled = false;
       }
     } }, 'Push to Xray');
 
   list.append(h('div', { class: 'xrayCard' },
     h('b', { style: 'color:var(--fg)' }, 'Push to Xray Cloud'),
     h('span', {}, `Push ${out.executed} test results to a Jira Xray execution. Configure credentials in Settings → Xray.`),
-    xrayPushBtn));
+    tagInput,
+    h('div', { style: 'display:flex;gap:8px;margin-top:8px' }, previewBtn, xrayPushBtn),
+    previewBox));
   work.append(list);
 }
 function sumCard(label, value, cls) {
@@ -2232,37 +2597,203 @@ function renderPresetView(id) {
 }
 
 /* ---------- shared assertion editor (request editor + test management) ---------- */
-function buildAssertionsEditor(spec, save) {
-  const asserts = spec.assertions || [];
-  const table = h('table', { class: 'kv' },
-    h('tr', {}, h('th', { style: 'width:110px' }, 'Type'), h('th', {}, 'Path / Name'), h('th', {}, 'Expected'), h('th', { style: 'width:30px' }, '')));
-  const sync = () => {
-    const next = [];
-    for (const tr of table.querySelectorAll('tr[data-row]')) {
-      const type = tr.querySelector('select').value;
-      const [p, eq] = tr.querySelectorAll('input');
-      const a = { type };
-      if (type === 'status') a.equals = parseInt(eq.value, 10) || 200;
-      else if (type === 'jsonpath') { a.path = p.value; a.equals = eq.value; }
-      else if (type === 'header') { a.name = p.value; a.equals = eq.value; }
-      else if (type === 'contains') a.contains = eq.value;
-      else if (type === 'max_ms') a.max_ms = parseInt(eq.value, 10) || 1000;
-      next.push(a);
+// sampleResponseFor returns a parsed JSON sample of the last real response
+// for `full` ({id, spec, ...}), used by the clickable response-tree
+// assertion authoring. Returns null when no JSON sample is available yet.
+function sampleResponseFor(full) {
+  let body = null;
+  if (S.req && S.req.id === full.id && S.last) body = S.last.body;
+  else if (S.lastTestRun && S.lastTestRun.id === full.id) body = S.lastTestRun.result.body;
+  if (body == null) return null;
+  try { return JSON.parse(body); } catch { return null; }
+}
+
+let asrtView = 'visual';
+
+function buildAssertionsEditor(full, spec, save) {
+  spec.assertions = (spec.assertions || []).map(normalizeAssertion);
+  const container = h('div', {});
+
+  function redraw() {
+    container.innerHTML = '';
+    const asserts = spec.assertions;
+    const switcher = h('div', { class: 'viewSeg' },
+      ...[['visual', 'Visual'], ['cel', 'CEL'], ['script', 'Script']].map(([v, l]) =>
+        h('button', { class: asrtView === v ? 'on' : '', onclick: () => { asrtView = v; redraw(); } }, l)));
+    const sample = sampleResponseFor(full);
+    const fromBtn = h('button', { class: 'fromRespBtn',
+      title: sample ? 'Build assertions by clicking values in the last response' : 'Run this test to enable response-based assertions',
+      onclick: () => {
+        if (!sample) { toast('Run this test first to capture a sample response', true); return; }
+        openAssertFromResponse(sample, (a) => { spec.assertions.push(a); save(); redraw(); });
+      } }, '⊕ From response');
+    if (!sample) fromBtn.disabled = true;
+    container.append(h('div', { style: 'display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap' },
+      h('div', { class: 'lbl', style: 'font-size:10px;letter-spacing:.1em;color:var(--dim);font-weight:700' }, 'ASSERTIONS'),
+      h('span', { class: 'n', style: 'background:var(--ink-soft);color:var(--ink);border-radius:99px;font-size:10px;padding:0 6px' }, String(asserts.length)),
+      h('span', { style: 'flex:1' }), fromBtn, switcher));
+
+    if (asrtView === 'cel') {
+      container.append(
+        h('div', { class: 'compiledHd' }, h('span', { class: 'lang' }, 'CEL'),
+          h('span', {}, 'cel-go predicate preview · read-only · generated from the visual rows below')),
+        h('pre', { class: 'celPre', html: hlCEL(assertionsToCEL(asserts)) }),
+        h('div', { class: 'note', style: 'margin-top:8px' }, 'Edit the Visual rows to regenerate this preview.'));
+      return;
     }
-    spec.assertions = next; save();
+    if (asrtView === 'script') {
+      container.append(
+        h('div', { class: 'compiledHd' }, h('span', { class: 'lang' }, 'JS'),
+          h('span', {}, 'goja/Sobek runtime · relay.* API · read-only preview')),
+        h('pre', { class: 'celPre' }, assertionsToScript(spec.name || 'test', asserts)),
+        h('div', { class: 'note', style: 'margin-top:8px' }, 'Edit the Visual rows — or add a Script-type assertion there — to change behavior.'));
+      return;
+    }
+
+    // visual
+    const tbody = h('tbody');
+    asserts.forEach((a, i) => tbody.append(assertRow(a, i)));
+    container.append(
+      h('table', { class: 'asrt' },
+        h('thead', {}, h('tr', {}, h('th', { style: 'width:88px' }, 'Type'), h('th', {}, 'Condition'), h('th', { style: 'width:30px' }, ''))),
+        tbody),
+      h('button', { class: 'addRow', onclick: (e) => showAddAssertionMenu(e) }, '+ Add assertion'));
+
+    function refreshCelLine(i, a) {
+      const el = container.querySelector('#cel-' + i);
+      if (el) el.innerHTML = hlCEL(toCEL(a) || '');
+    }
+    function txt(val, cls, ph, set, i, a) {
+      return h('input', { type: 'text', class: cls, value: val ?? '', placeholder: ph || '',
+        oninput: (e) => { set(e.target.value); refreshCelLine(i, a); }, onchange: () => save() });
+    }
+    function opSelect(a) {
+      const sel = h('select', { onchange: (e) => { a.op = e.target.value; save(); redraw(); } });
+      for (const [val, lbl] of Object.entries(OPS[a.type] || {})) sel.append(h('option', { value: val, selected: val === a.op ? '' : undefined }, lbl));
+      return sel;
+    }
+    function subOpSelect(a) {
+      const sel = h('select', { onchange: (e) => { a.sub = e.target.value; save(); } });
+      for (const [val, lbl] of Object.entries(SUBOPS)) sel.append(h('option', { value: val, selected: val === (a.sub || '==') ? '' : undefined }, lbl));
+      return sel;
+    }
+    function assertRow(a, i) {
+      if (a.type === 'script') {
+        return h('tr', {},
+          h('td', {}, h('span', { class: 'asrtType script' }, 'Script')),
+          h('td', { colspan: '2' }, h('textarea', { class: 'scriptEd', spellcheck: 'false',
+            oninput: (e) => { a.code = e.target.value; save(); } }, a.code || "pm.test('custom check', () => {\n  pm.expect(true).to.be.true;\n});")),
+          h('td', {}, h('button', { class: 'delRow', onclick: () => { spec.assertions.splice(i, 1); save(); redraw(); } }, '✕')));
+      }
+      let fields;
+      if (a.type === 'status') {
+        fields = h('div', { class: 'asrtFields' }, opSelect(a),
+          a.op === 'exists' ? null : txt(a.exp, 'exp', a.op === 'oneof' ? '200, 404' : '200', v => a.exp = v, i, a));
+      } else if (a.type === 'header') {
+        fields = h('div', { class: 'asrtFields' },
+          txt(a.name, 'path', 'Header-Name', v => a.name = v, i, a), opSelect(a),
+          a.op === 'exists' ? null : txt(a.exp, 'exp', 'value', v => a.exp = v, i, a));
+      } else if (a.type === 'json') {
+        fields = h('div', { class: 'asrtFields' },
+          txt(a.path, 'path', '$.result.status', v => a.path = v, i, a), opSelect(a),
+          a.op === 'exists' ? null : txt(a.exp, 'exp', 'expected', v => a.exp = v, i, a));
+      } else if (a.type === 'text') {
+        fields = h('div', { class: 'asrtFields' }, opSelect(a), txt(a.exp, 'exp', 'text', v => a.exp = v, i, a));
+      } else if (a.type === 'timing') {
+        fields = h('div', { class: 'asrtFields' },
+          h('span', { class: 'unit' }, 'total'), opSelect(a),
+          txt(a.exp, 'exp', '2000', v => a.exp = v, i, a), h('span', { class: 'unit' }, 'ms'));
+      } else if (a.type === 'forall' || a.type === 'exists') {
+        fields = h('div', { class: 'asrtFields' },
+          txt(a.path, 'path', '$.checks', v => a.path = v, i, a),
+          h('span', { class: 'unit' }, a.type === 'forall' ? '∀ item .' : '∃ item .'),
+          txt(a.field, 'exp', 'field', v => a.field = v, i, a),
+          subOpSelect(a), txt(a.exp, 'exp', 'value', v => a.exp = v, i, a));
+      } else if (a.type === 'count') {
+        fields = h('div', { class: 'asrtFields' },
+          h('span', { class: 'unit' }, 'size('), txt(a.path, 'path', '$.matches', v => a.path = v, i, a),
+          h('span', { class: 'unit' }, ')'), opSelect(a), txt(a.exp, 'exp', '0', v => a.exp = v, i, a));
+      }
+      return h('tr', {},
+        h('td', {}, h('span', { class: 'asrtType ' + a.type }, TYPE_LABEL[a.type] || a.type)),
+        h('td', {}, fields, h('div', { class: 'celLine', id: 'cel-' + i, html: hlCEL(toCEL(a) || '') })),
+        h('td', {}, h('button', { class: 'delRow', onclick: () => { spec.assertions.splice(i, 1); save(); redraw(); } }, '✕')));
+    }
+    function showAddAssertionMenu(e) {
+      e.stopPropagation();
+      ctxMenu.show(e.clientX, e.clientY, ASRT_TYPES.map(t => ({
+        icon: '', label: TYPE_LABEL[t],
+        action: () => { spec.assertions.push({ ...ASRT_DEFAULTS[t] }); save(); redraw(); },
+      })));
+    }
+  }
+  redraw();
+  return container;
+}
+
+// traceCardSection renders the Traceability card wired to the real Xray /
+// Jira endpoints: link an existing test, create a new Xray test issue, and
+// link Jira requirement issues.
+function traceCardSection(full, spec, save) {
+  const card = h('div', { class: 'card', style: 'padding:14px' },
+    h('div', { class: 'lbl', style: 'font-size:10px;letter-spacing:.1em;color:var(--dim);font-weight:700;margin-bottom:8px' }, 'TRACEABILITY'));
+  const statusLine = h('div', {});
+  const renderStatus = () => {
+    statusLine.innerHTML = '';
+    statusLine.append(spec.xrayKey
+      ? h('span', { class: 'valMsg ok' }, '✓ Linked to ' + spec.xrayKey)
+      : h('span', { class: 'valMsg bad' }, '✕ Not linked to Xray'));
   };
-  const addRow = (a = { type: 'status', equals: 200 }) => {
-    table.append(h('tr', { 'data-row': 1 },
-      h('td', {}, h('select', { onchange: sync },
-        ['status', 'jsonpath', 'header', 'contains', 'max_ms'].map(t => h('option', { value: t, selected: a.type === t ? '' : undefined }, t)))),
-      h('td', {}, h('input', { type: 'text', value: a.path || a.name || '', placeholder: '$.result.status', onchange: sync })),
-      h('td', {}, h('input', { type: 'text', value: a.equals ?? a.contains ?? a.max_ms ?? '', onchange: sync })),
-      h('td', {}, h('button', { class: 'delRow', onclick: (e) => { e.target.closest('tr').remove(); sync(); } }, '✕'))));
+  renderStatus();
+  card.append(statusLine);
+
+  const reqChips = h('div', { class: 'chips', style: 'margin-top:10px' });
+  const renderReqs = () => {
+    reqChips.innerHTML = '';
+    for (const rq of spec.requirements || []) {
+      reqChips.append(h('span', { class: 'att on' }, rq + ' ',
+        h('button', { class: 'delRow', title: 'Remove from this list (does not unlink in Jira)',
+          onclick: () => { spec.requirements = spec.requirements.filter(x => x !== rq); save(); renderReqs(); } }, ' ✕')));
+    }
+    if (!(spec.requirements || []).length) reqChips.append(h('span', { style: 'color:var(--faint);font-size:12px' }, 'No linked requirements yet.'));
   };
-  asserts.forEach(addRow);
-  const frag = document.createDocumentFragment();
-  frag.append(table, h('button', { class: 'addRow', onclick: () => addRow() }, '+ Add assertion'));
-  return frag;
+  renderReqs();
+
+  card.append(h('div', { class: 'traceActions' },
+    h('button', { class: 'btn sm', onclick: async () => {
+      const key = await modal.prompt('Link existing Xray test', { placeholder: 'AML-T142', value: spec.xrayKey || '' });
+      if (!key) return;
+      try {
+        const ref = await api('/api/xray/test?key=' + encodeURIComponent(key));
+        if (!ref) { toast('No Xray test found for ' + key, true); return; }
+        spec.xrayKey = key; save(); renderStatus();
+        toast('Linked to ' + key + (ref.summary ? ' — ' + ref.summary : ''));
+      } catch (e) { toast(e.message, true); }
+    } }, 'Link existing test'),
+    h('button', { class: 'btn sm', onclick: async () => {
+      try {
+        const r = await api('/api/xray/test', { method: 'POST', body: { requestId: full.id, summary: spec.name } });
+        spec.xrayKey = r.xrayKey; renderStatus();
+        toast('Created Xray test ' + r.xrayKey);
+      } catch (e) { toast(e.message, true); }
+    } }, 'Create Xray issue'),
+    h('button', { class: 'btn sm', onclick: async () => {
+      if (!spec.xrayKey) { toast('Link or create an Xray test first', true); return; }
+      const raw = await modal.prompt('Requirement keys (comma separated)', { placeholder: 'AML-1, AML-2' });
+      if (!raw) return;
+      const keys = raw.split(',').map(s => s.trim()).filter(Boolean);
+      if (!keys.length) return;
+      try {
+        const r = await api('/api/xray/requirements/link', { method: 'POST', body: { requestId: full.id, requirementKeys: keys } });
+        spec.requirements = r.requirements; renderReqs();
+        toast('Linked ' + keys.length + ' requirement' + (keys.length === 1 ? '' : 's'));
+      } catch (e) { toast(e.message, true); }
+    } }, 'Link requirements')));
+
+  card.append(reqChips);
+  card.append(h('div', { class: 'note', style: 'margin-top:10px' },
+    'Linking/creating calls Xray and Jira directly. Configure project key and credentials in Settings → Xray Cloud.'));
+  return card;
 }
 
 /* ---------- helpers ---------- */
