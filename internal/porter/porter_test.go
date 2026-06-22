@@ -100,6 +100,41 @@ func TestImportPostman(t *testing.T) {
 	}
 }
 
+func TestImportPostmanFormData(t *testing.T) {
+	fixture := `{
+  "info": {"name": "Uploads"},
+  "item": [{
+    "name": "Upload Doc",
+    "request": {
+      "method": "POST",
+      "url": "https://api.example.com/upload",
+      "body": {"mode": "formdata", "formdata": [
+        {"key": "name", "value": "{{name}}", "type": "text"},
+        {"key": "doc", "src": "./doc.pdf", "type": "file"},
+        {"key": "off", "value": "no", "type": "text", "disabled": true}
+      ]}
+    }
+  }]
+}`
+	out := filepath.Join(t.TempDir(), "uploads")
+	if _, err := ImportPostman([]byte(fixture), out); err != nil {
+		t.Fatal(err)
+	}
+	req, err := dsl.LoadRequest(filepath.Join(out, "01-upload-doc.req.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.Body == nil || req.Body.Type != "formdata" || len(req.Body.FormData) != 3 {
+		t.Fatalf("body = %+v", req.Body)
+	}
+	if req.Body.FormData[1].Type != "file" || req.Body.FormData[1].File != "./doc.pdf" {
+		t.Errorf("file field = %+v", req.Body.FormData[1])
+	}
+	if !req.Body.FormData[2].Disabled {
+		t.Errorf("disabled flag not preserved: %+v", req.Body.FormData[2])
+	}
+}
+
 func TestImportPostmanRejectsGarbage(t *testing.T) {
 	if _, err := ImportPostman([]byte(`{"foo": 1}`), t.TempDir()); err == nil {
 		t.Error("expected error for non-collection JSON")

@@ -148,7 +148,26 @@ pm.test("result is VERIFIED", function() {
 
 ### CI pipeline with Xray push
 
-For fully headless CI pushes, use the relay UI API from a script:
+The target CI path is a headless CLI push from `relay run`, so pipelines do
+not need to start the browser UI server. The design is documented in
+[TEST_MANAGEMENT_DESIGN.md](TEST_MANAGEMENT_DESIGN.md).
+
+Planned CLI shape:
+
+```bash
+relay run collections/regression \
+  --env sit \
+  --report junit \
+  --out relay-results.xml \
+  --json-out relay-results.json \
+  --xray-push \
+  --xray-project AML \
+  --xray-test-plan AML-88 \
+  --xray-summary "Relay SIT regression"
+```
+
+Until those Xray CLI flags are implemented, use the Relay UI API from a
+short-lived local sidecar only as a temporary workaround:
 
 ```bash
 #!/usr/bin/env bash
@@ -164,7 +183,7 @@ curl -sf -X POST "$RELAY_URL/api/xray/push" \
   | jq -r '.executionKey'
 ```
 
-Or use the JSON report to drive a custom Xray push via their REST API.
+Or use the JSON report to drive a custom Xray push via Xray's API.
 
 ---
 

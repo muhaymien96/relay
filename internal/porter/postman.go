@@ -21,8 +21,11 @@ type pmCollection struct {
 }
 
 type pmVariable struct {
-	Key   string `json:"key"`
-	Value string `json:"value"`
+	Key      string `json:"key"`
+	Value    string `json:"value"`
+	Type     string `json:"type"`
+	Src      string `json:"src"`
+	Disabled bool   `json:"disabled"`
 }
 
 type pmItem struct {
@@ -73,6 +76,7 @@ type pmBody struct {
 	Mode       string       `json:"mode"` // raw | urlencoded | formdata
 	Raw        string       `json:"raw"`
 	URLEncoded []pmVariable `json:"urlencoded"`
+	FormData   []pmVariable `json:"formdata"`
 	Options    *struct {
 		Raw struct {
 			Language string `json:"language"`
@@ -177,9 +181,28 @@ func convert(name string, pr *pmRequest) *dsl.Request {
 		case "urlencoded":
 			pairs := make([]string, 0, len(b.URLEncoded))
 			for _, kv := range b.URLEncoded {
+				if kv.Disabled {
+					continue
+				}
 				pairs = append(pairs, kv.Key+"="+kv.Value)
 			}
 			r.Body = &dsl.Body{Type: "urlencoded", Content: strings.Join(pairs, "&")}
+		case "formdata":
+			fields := make([]dsl.FormField, 0, len(b.FormData))
+			for _, kv := range b.FormData {
+				fieldType := kv.Type
+				if fieldType == "" {
+					fieldType = "text"
+				}
+				fields = append(fields, dsl.FormField{
+					Key:      kv.Key,
+					Value:    kv.Value,
+					Type:     fieldType,
+					File:     kv.Src,
+					Disabled: kv.Disabled,
+				})
+			}
+			r.Body = &dsl.Body{Type: "formdata", FormData: fields}
 		}
 	}
 	if a := pr.Auth; a != nil {

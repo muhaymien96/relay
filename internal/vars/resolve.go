@@ -1,7 +1,9 @@
 package vars
 
 import (
+	"bytes"
 	"fmt"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
@@ -97,6 +99,8 @@ func resolveBody(r *dsl.Request, res *Resolved, scope *Scope) error {
 	b := r.Body
 	res.BodyType = b.Type
 	switch {
+	case b.Type == "formdata":
+		return resolveFormData(r, res, scope)
 	case b.File != "":
 		path := b.File
 		if !filepath.IsAbs(path) && r.Path != "" {
@@ -119,6 +123,57 @@ func resolveBody(r *dsl.Request, res *Resolved, scope *Scope) error {
 			res.Headers.Set("Content-Type", ct)
 			res.HeaderOrigin["Content-Type"] = "request"
 		}
+	}
+	return nil
+}
+
+func resolveFormData(r *dsl.Request, res *Resolved, scope *Scope) error {
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	for _, field := range r.Body.FormData {
+		if field.Disabled || field.Key == "" {
+			continue
+		}
+		key, err := scope.Interpolate(field.Key)
+		if err != nil {
+			return fmt.Errorf("form-data key %s: %w", field.Key, err)
+		}
+		if field.Type == "file" {
+			path, err := scope.Interpolate(field.File)
+			if err != nil {
+				return fmt.Errorf("form-data file %s: %w", field.Key, err)
+			}
+			if !filepath.IsAbs(path) && r.Path != "" {
+				path = filepath.Join(filepath.Dir(r.Path), path)
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return fmt.Errorf("form-data file %s: %w", field.Key, err)
+			}
+			part, err := w.CreateFormFile(key, filepath.Base(path))
+			if err != nil {
+				return fmt.Errorf("form-data file %s: %w", field.Key, err)
+			}
+			if _, err := part.Write(data); err != nil {
+				return fmt.Errorf("form-data file %s: %w", field.Key, err)
+			}
+			continue
+		}
+		value, err := scope.Interpolate(field.Value)
+		if err != nil {
+			return fmt.Errorf("form-data %s: %w", field.Key, err)
+		}
+		if err := w.WriteField(key, value); err != nil {
+			return fmt.Errorf("form-data %s: %w", field.Key, err)
+		}
+	}
+	if err := w.Close(); err != nil {
+		return fmt.Errorf("form-data: %w", err)
+	}
+	res.Body = buf.Bytes()
+	if res.Headers.Get("Content-Type") == "" {
+		res.Headers.Set("Content-Type", w.FormDataContentType())
+		res.HeaderOrigin["Content-Type"] = "request"
 	}
 	return nil
 }

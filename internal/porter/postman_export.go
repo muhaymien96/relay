@@ -153,6 +153,26 @@ func postmanItem(req *dsl.Request, inherited map[string]string) map[string]any {
 			pmReq["body"] = body
 		}
 	}
+	if b := req.Body; b != nil && b.Type == "formdata" && len(b.FormData) > 0 {
+		var fields []map[string]any
+		for _, f := range b.FormData {
+			fieldType := f.Type
+			if fieldType == "" {
+				fieldType = "text"
+			}
+			field := map[string]any{"key": f.Key, "type": fieldType}
+			if fieldType == "file" {
+				field["src"] = f.File
+			} else {
+				field["value"] = f.Value
+			}
+			if f.Disabled {
+				field["disabled"] = true
+			}
+			fields = append(fields, field)
+		}
+		pmReq["body"] = map[string]any{"mode": "formdata", "formdata": fields}
+	}
 
 	if a := req.Auth; a != nil {
 		kv := func(key, value string) map[string]string {

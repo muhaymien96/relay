@@ -128,6 +128,32 @@ func TestMarshalBodyFidelity(t *testing.T) {
 	}
 }
 
+func TestMarshalFormDataRoundTrip(t *testing.T) {
+	r := &Request{
+		Name:   "upload",
+		Method: "POST",
+		URL:    "https://api.example.com/upload",
+		Body: &Body{Type: "formdata", FormData: []FormField{
+			{Key: "metadata", Value: `{"id":"{{id}}"}`, Type: "text"},
+			{Key: "document", File: "./fixtures/doc.pdf", Type: "file"},
+			{Key: "skip", Value: "off", Type: "text", Disabled: true},
+		}},
+	}
+	r2, err := LoadRequest(writeReq(t, string(Marshal(r))))
+	if err != nil {
+		t.Fatalf("parse failed: %v", err)
+	}
+	if r2.Body == nil || r2.Body.Type != "formdata" || len(r2.Body.FormData) != 3 {
+		t.Fatalf("form-data body = %+v", r2.Body)
+	}
+	if got := r2.Body.FormData[1].File; got != "./fixtures/doc.pdf" {
+		t.Errorf("file field = %q", got)
+	}
+	if !r2.Body.FormData[2].Disabled {
+		t.Errorf("disabled field was not preserved: %+v", r2.Body.FormData[2])
+	}
+}
+
 func TestLoadRequestErrors(t *testing.T) {
 	if _, err := LoadRequest(writeReq(t, `name = "no url"`)); err == nil {
 		t.Error("expected error for missing url")

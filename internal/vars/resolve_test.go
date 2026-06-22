@@ -1,6 +1,8 @@
 package vars
 
 import (
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/muhaymien96/relay/internal/dsl"
@@ -99,6 +101,41 @@ func TestResolveBasicAndAPIKey(t *testing.T) {
 	}
 	if r.URL != "https://x.test/p?key=v1" {
 		t.Errorf("apikey query = %q", r.URL)
+	}
+}
+
+func TestResolveFormData(t *testing.T) {
+	root := t.TempDir()
+	filePath := root + "/doc.txt"
+	if err := os.WriteFile(filePath, []byte("hello file"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	req := &dsl.Request{
+		Method: "POST",
+		URL:    "https://api.example.com/upload",
+		Path:   root + "/upload.req.toml",
+		Body: &dsl.Body{Type: "formdata", FormData: []dsl.FormField{
+			{Key: "name", Value: "{{name}}", Type: "text"},
+			{Key: "file", File: "doc.txt", Type: "file"},
+			{Key: "disabled", Value: "no", Type: "text", Disabled: true},
+		}},
+	}
+	r, err := Resolve(req, nil, NewScope(map[string]string{"name": "Ada"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ct := r.Headers.Get("Content-Type")
+	if !strings.HasPrefix(ct, "multipart/form-data; boundary=") {
+		t.Fatalf("content-type = %q", ct)
+	}
+	body := string(r.Body)
+	for _, want := range []string{`name="name"`, "Ada", `name="file"`, `filename="doc.txt"`, "hello file"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("multipart body missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "disabled") {
+		t.Errorf("disabled field was included:\n%s", body)
 	}
 }
 

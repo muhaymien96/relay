@@ -54,9 +54,19 @@ type Auth struct {
 
 // Body holds the request body. Content and File are mutually exclusive.
 type Body struct {
-	Type    string `toml:"type" json:"type"` // json | xml | raw | urlencoded | binary
-	Content string `toml:"content" json:"content,omitempty"`
-	File    string `toml:"file" json:"file,omitempty"`
+	Type     string      `toml:"type" json:"type"` // json | xml | raw | urlencoded | formdata | binary
+	Content  string      `toml:"content" json:"content,omitempty"`
+	File     string      `toml:"file" json:"file,omitempty"`
+	FormData []FormField `toml:"form_data" json:"formData,omitempty"`
+}
+
+// FormField is one multipart/form-data field. Type is text or file.
+type FormField struct {
+	Key      string `toml:"key" json:"key"`
+	Value    string `toml:"value" json:"value,omitempty"`
+	Type     string `toml:"type" json:"type,omitempty"`
+	File     string `toml:"file" json:"file,omitempty"`
+	Disabled bool   `toml:"disabled" json:"disabled,omitempty"`
 }
 
 // Assertion is one post-response check.

@@ -213,6 +213,8 @@ Mock server, GraphQL/gRPC clients, Zephyr/TestRail adapters, request chaining vi
 - A QE can push a full regression run's results to Xray without leaving the app or writing glue code.
 - Collections survive a git merge between two contributors with zero corruption.
 
+See [TEST_MANAGEMENT_DESIGN.md](TEST_MANAGEMENT_DESIGN.md) for the detailed Test Management workflow covering granular assertions, Jira/Xray traceability, CLI execution, and Azure DevOps integration.
+
 ## 10. Risks & Mitigations
 
 | Risk | Mitigation |

@@ -57,6 +57,22 @@ func Marshal(r *Request) []byte {
 		} else if body.Content != "" {
 			writeContent(&b, body.Content)
 		}
+		for _, f := range body.FormData {
+			b.WriteString("\n[[body.form_data]]\n")
+			kv("key", f.Key)
+			if f.Type != "" {
+				kv("type", f.Type)
+			}
+			if f.File != "" {
+				kv("file", f.File)
+			}
+			if f.Value != "" {
+				kv("value", f.Value)
+			}
+			if f.Disabled {
+				fmt.Fprintf(&b, "disabled = true\n")
+			}
+		}
 	}
 
 	for _, a := range r.Assertions {

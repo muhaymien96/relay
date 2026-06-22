@@ -124,7 +124,26 @@ Right-click a collection and choose Run collection.
 - Runs all requests in the collection.
 - Includes assertion and script outcomes.
 
-## 8. Troubleshooting
+## 8. Test Management and Xray
+
+Relay tests are saved as part of each request, so the same checks run in the UI, CLI, and CI pipelines.
+
+Use assertions for granular validation:
+- Status code checks, for example status equals 200.
+- Response header checks, for example Content-Type contains application/json.
+- JSON response checks, for example $.result.status equals VERIFIED.
+- Body text checks, for example response contains success.
+- Timing checks, for example total response time is under 2000ms.
+
+For advanced checks, use Scripts -> Tests with pm.test blocks.
+
+Xray/Jira traceability is configured from Settings -> Xray Cloud. Credentials stay in environment variables:
+- RELAY_XRAY_CLIENT_ID
+- RELAY_XRAY_CLIENT_SECRET
+
+The detailed Test Management design, including Jira issue links, Xray test creation, selected test runs, and Azure DevOps pipeline behavior, lives in [TEST_MANAGEMENT_DESIGN.md](TEST_MANAGEMENT_DESIGN.md).
+
+## 9. Troubleshooting
 
 ### Variables not resolving
 - Confirm environment is selected in dropdown.

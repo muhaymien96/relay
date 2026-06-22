@@ -202,8 +202,10 @@ on Linux. No Electron, no bundled browser, ~10MB binary.
 ```sh
 # Linux: needs libgtk-3-dev libwebkit2gtk-4.1-dev to build
 go build -tags desktop,production,webkit2_41 -o relay-app ./cmd/relay-app
-# macOS / Windows
+# macOS
 go build -tags desktop,production -o relay-app ./cmd/relay-app
+# Windows: -H windowsgui prevents a console window from opening
+go build -tags desktop,production -ldflags "-H windowsgui" -o relay-app.exe ./cmd/relay-app
 
 relay-app --workspace my-collection   # or RELAY_WORKSPACE=... relay-app
 ```

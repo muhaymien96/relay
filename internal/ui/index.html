@@ -58,6 +58,7 @@
   .colRow { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 7px;
             cursor: pointer; font-weight: 600; }
   .colRow:hover { background: var(--ink-soft); }
+  .colRow.drag-over { background: #e9ecff; color: var(--ink); outline: 1px dashed var(--ink); }
   .colRow .car { color: var(--faint); font-size: 10px; width: 10px; }
   .colRow .runBtn { margin-left: auto; border: 0; background: none; color: var(--faint); font-size: 12px; }
   .colRow .runBtn:hover { color: var(--ink); }
@@ -97,12 +98,30 @@
   #content { flex: 1; display: flex; min-height: 0; }
   #work { flex: 1; display: flex; flex-direction: column; min-width: 0; padding: 16px 18px; gap: 14px;
           overflow: auto; }
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+          min-width: 0; max-width: 100%; overflow: hidden; }
 
   /* request editor */
   #urlRow { display: flex; gap: 8px; padding: 12px; align-items: center; }
   #method { font-family: var(--mono); font-weight: 700; width: 96px; }
   #url { flex: 1; font-family: var(--mono); font-size: 13px; }
+  #url.var-active, textarea.body.var-active {
+    border-color: #e1b244;
+    background: #fff9e9;
+  }
+  table.kv input.var-active, table.formData input.var-active {
+    background: #fff9e9;
+    border-radius: 4px;
+  }
+  .varChips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 2px; }
+  .varChip {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid #eed08b; background: #fff7e1; color: #7b5a12;
+    border-radius: 99px; padding: 2px 10px; font-family: var(--mono); font-size: 11px; font-weight: 700;
+  }
+  .varChip.missing { border-color: #f0b1b1; background: #fdeeee; color: #a33434; }
+  .varChip.secret { border-color: #cdbaf2; background: #f3eefe; color: #5b3ea1; }
+  .varScope { font-size: 10px; opacity: .75; font-family: "Inter", system-ui, sans-serif; }
   #reqName { border: 0; font-weight: 700; font-size: 14px; width: 100%; padding: 0 0 2px; }
   #reqName:focus { outline: none; border-bottom: 1px dashed var(--ink); }
   .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); padding: 0 12px; }
@@ -111,7 +130,7 @@
   .tabs button.on { color: var(--fg); border-bottom-color: var(--ink); }
   .tabs button .n { background: var(--ink-soft); color: var(--ink); border-radius: 99px; font-size: 10px;
                     padding: 0 6px; margin-left: 4px; }
-  .tabBody { padding: 12px; }
+  .tabBody { padding: 12px; min-width: 0; max-width: 100%; overflow: hidden; }
   table.kv { width: 100%; border-collapse: collapse; }
   table.kv th { text-align: left; font-size: 10px; letter-spacing: .08em; color: var(--dim);
                 text-transform: uppercase; padding: 4px 8px; border-bottom: 1px solid var(--line); }
@@ -126,8 +145,22 @@
   .addRow { margin-top: 8px; border: 1px dashed var(--line2); background: none; color: var(--dim);
             width: 100%; padding: 7px; border-radius: 7px; }
   .addRow:hover { color: var(--ink); border-color: var(--ink); }
-  textarea.body { width: 100%; min-height: 170px; font-family: var(--mono); font-size: 12.5px;
-                  resize: vertical; }
+  textarea.body { display: block; width: 100%; max-width: 100%; min-height: 220px;
+                  font-family: var(--mono); font-size: 12.5px; resize: vertical;
+                  line-height: 1.6; white-space: pre; overflow: auto; }
+  .bodyToolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .bodyToolbar label { color: var(--dim); font-weight: 700; }
+  .bodyToolbar select { width: 150px; flex: none; }
+  .formDataWrap { border: 1px solid var(--line); border-radius: 8px; overflow: auto; max-height: 280px; }
+  table.formData { width: 100%; min-width: 720px; border-collapse: collapse; }
+  table.formData th { position: sticky; top: 0; z-index: 1; text-align: left; font-size: 10px;
+                      letter-spacing: .08em; color: var(--dim); text-transform: uppercase;
+                      padding: 7px 8px; border-bottom: 1px solid var(--line); background: #fafbfe; }
+  table.formData td { padding: 5px 6px; border-bottom: 1px solid var(--line); background: #fff; }
+  table.formData tr:last-child td { border-bottom: 0; }
+  table.formData input[type=text], table.formData select { width: 100%; border: 0; background: none;
+                      font-family: var(--mono); font-size: 12.5px; padding: 4px 2px; }
+  table.formData input[type=checkbox] { margin: 0; }
   .formRow { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
   .formRow label { width: 110px; color: var(--dim); font-weight: 600; }
   .formRow input, .formRow select { flex: 1; max-width: 420px; }
@@ -143,6 +176,14 @@
   #respBody { margin: 0; padding: 12px 14px; font-family: var(--mono); font-size: 12.5px;
               white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow: auto; }
   .hdrWrap { max-height: 340px; overflow: auto; }
+  #respCard { display: flex; flex-direction: column; min-width: 0; }
+  #respCard.hasResp { min-height: 260px; }
+  #respCard.hasResp #respBody,
+  #respCard.hasResp .hdrWrap,
+  #respCard.hasResp #timingBars {
+    max-height: min(58vh, 700px);
+    overflow: auto;
+  }
   .hdrTitle { display: flex; align-items: center; gap: 8px; padding: 10px 14px 4px; font-size: 10px;
               letter-spacing: .08em; color: var(--dim); font-weight: 700; text-transform: uppercase; }
   .hdrTitle .n { background: var(--ink-soft); color: var(--ink); border-radius: 99px; padding: 0 7px;
@@ -161,22 +202,24 @@
   .json-k { color: var(--ink); } .json-s { color: #0d7a52; } .json-n { color: #b45309; }
 
   /* script editor */
-  .scriptWrap { position: relative; border: 1px solid var(--line2); border-radius: 8px; overflow: hidden; }
+  .scriptWrap { position: relative; border: 1px solid var(--line2); border-radius: 8px; overflow: hidden;
+                min-width: 0; max-width: 100%; }
   .scriptSubTabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line2); padding: 0 10px; background: #fafbfe; }
   .scriptSubTabs button { border: 0; background: none; padding: 7px 12px; color: var(--dim); font-size: 12px;
                            font-weight: 600; border-bottom: 2px solid transparent; }
   .scriptSubTabs button.on { color: var(--fg); border-bottom-color: var(--ink); }
-  .scriptEditor { position: relative; font-family: var(--mono); font-size: 12.5px; min-height: 200px; }
+  .scriptEditor { position: relative; font-family: var(--mono); font-size: 12.5px; height: 240px;
+                  min-height: 160px; max-width: 100%; resize: vertical; overflow: hidden; }
   .scriptEditor textarea {
-    position: absolute; inset: 0; width: 100%; height: 100%; min-height: 200px;
-    border: 0; padding: 12px 12px 12px 52px; font: inherit; resize: vertical;
+    position: absolute; inset: 0; display: block; width: 100%; max-width: 100%; height: 100%; min-height: 200px;
+    border: 0; padding: 12px 12px 12px 52px; font: inherit; resize: none;
     background: transparent; color: transparent; caret-color: var(--fg);
-    outline: none; z-index: 2; white-space: pre; overflow-wrap: normal; overflow-x: auto;
+    outline: none; z-index: 2; white-space: pre; overflow-wrap: normal; overflow: auto;
     line-height: 1.6;
   }
   .scriptHighlight {
     position: absolute; inset: 0; padding: 12px 12px 12px 52px;
-    font: inherit; pointer-events: none; white-space: pre; overflow: auto;
+    font: inherit; pointer-events: none; white-space: pre; overflow: hidden;
     line-height: 1.6; color: var(--fg); z-index: 1; background: #f8f9fe;
   }
   .json-k { color: #d73a49; font-weight: 600; }
@@ -184,12 +227,15 @@
   .json-n { color: #005cc5; }
   .json-b { color: #d73a49; }
   .json-null { color: #d73a49; }
+  .var-token { background: #ffe9b5; color: #7c4f00; border-radius: 3px; padding: 0 1px; }
   .scriptLineNums {
     position: absolute; left: 0; top: 0; width: 44px; padding: 12px 8px;
     text-align: right; font: inherit; color: var(--faint); line-height: 1.6;
     pointer-events: none; user-select: none; background: #f0f1f8;
     border-right: 1px solid var(--line2); z-index: 3;
+    white-space: pre;
   }
+  .bodyEditor { height: 320px; min-height: 240px; }
   .scriptErr { background: #fdf3f3; border: 1px solid #f3d4d4; border-radius: 7px;
                padding: 6px 12px; font-family: var(--mono); font-size: 12px; color: var(--red);
                margin-top: 8px; }
@@ -506,6 +552,108 @@ function findReqMeta(id) {
   return null;
 }
 
+const VAR_RE = /\{\{\s*([^{}\s][^{}]*)\s*\}\}/g;
+
+function extractVariables(text) {
+  if (!text) return [];
+  const seen = new Set();
+  const vars = [];
+  for (const m of String(text).matchAll(VAR_RE)) {
+    const raw = (m[1] || '').trim();
+    if (!raw || seen.has(raw)) continue;
+    seen.add(raw);
+    vars.push(raw);
+  }
+  return vars;
+}
+
+function collectScopeVars() {
+  const names = new Set();
+  const req = S.req?.spec;
+  const meta = S.reqId ? findReqMeta(S.reqId) : null;
+  const col = meta?.col;
+  const folder = col?.folders?.find(f => String(f.id) === String(S.req?.folderId));
+  const env = (S.state.environments || []).find(e => e.name === S.envName);
+  Object.keys(req?.vars || {}).forEach(k => names.add(k));
+  Object.keys(folder?.vars || {}).forEach(k => names.add(k));
+  Object.keys(col?.vars || {}).forEach(k => names.add(k));
+  Object.keys(env?.vars || {}).forEach(k => names.add(k));
+  (env?.secrets || []).forEach(k => names.add(k));
+  return names;
+}
+
+function sourceForVar(name) {
+  const req = S.req?.spec;
+  const meta = S.reqId ? findReqMeta(S.reqId) : null;
+  const col = meta?.col;
+  const folder = col?.folders?.find(f => String(f.id) === String(S.req?.folderId));
+  const env = (S.state.environments || []).find(e => e.name === S.envName);
+  if (Object.prototype.hasOwnProperty.call(req?.vars || {}, name)) return 'request';
+  if (Object.prototype.hasOwnProperty.call(folder?.vars || {}, name)) return 'folder';
+  if (Object.prototype.hasOwnProperty.call(col?.vars || {}, name)) return 'collection';
+  if (Object.prototype.hasOwnProperty.call(env?.vars || {}, name)) return 'environment';
+  if ((env?.secrets || []).includes(name)) return 'secret';
+  if (name.startsWith('$')) return 'computed';
+  return 'unresolved';
+}
+
+function resolvedValueForVar(name) {
+  if (!S.req?.id) return null;
+  const r = S.last?.resolved;
+  if (!r) return null;
+  if (!name.startsWith('$') && Object.prototype.hasOwnProperty.call(r.vars || {}, name)) {
+    return r.vars[name];
+  }
+  const values = [
+    ...(Object.entries(r.query || {}).map(([k, v]) => `${k}=${v}`)),
+    ...(Object.entries(r.headers || {}).map(([k, v]) => `${k}=${v}`)),
+    r.url || '',
+    r.body || '',
+  ].join('\n');
+  const m = values.match(new RegExp(String.raw`\{\{\s*${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\s*\}\}`));
+  if (m) return m[0];
+  return null;
+}
+
+function renderVarChips(text, { title = 'Variables' } = {}) {
+  const names = extractVariables(text);
+  if (!names.length) return null;
+  const known = collectScopeVars();
+  const chips = h('div', { class: 'varChips', 'aria-label': title });
+  for (const n of names) {
+    const src = sourceForVar(n);
+    const val = resolvedValueForVar(n);
+    const isMissing = src === 'unresolved';
+    const isSecret = src === 'secret';
+    const tip = isSecret
+      ? `${n}: value hidden (secret)`
+      : (val !== null && val !== undefined && val !== '' ? `${n} = ${val}` : `${n}: ${isMissing ? 'unresolved' : src}`);
+    chips.append(h('span', {
+      class: 'varChip' + (isMissing ? ' missing' : '') + (isSecret ? ' secret' : ''),
+      title: tip,
+    }, `{{${n}}}`, h('span', { class: 'varScope' }, src)));
+  }
+  return chips;
+}
+
+function decorateVarInput(inputEl) {
+  const refresh = () => {
+    const hasVars = /\{\{[^{}]+\}\}/.test(inputEl.value || '');
+    inputEl.classList.toggle('var-active', hasVars);
+    inputEl.title = hasVars ? 'Contains {{variables}}. See chips below for resolved values.' : '';
+  };
+  inputEl.addEventListener('input', refresh);
+  inputEl.addEventListener('change', refresh);
+  refresh();
+}
+
+async function moveRequestTo(reqId, collectionId, folderId = null) {
+  const r = await api('/api/requests/' + reqId);
+  r.collectionId = collectionId;
+  r.folderId = folderId;
+  await api('/api/requests/' + reqId, { method: 'PUT', body: r });
+}
+
 /* ---------- nav + side panel ---------- */
 document.querySelectorAll('.navItem[data-view]').forEach(b => b.onclick = async () => {
   if (S.reqDirty && S.req) await saveRequest();
@@ -531,6 +679,24 @@ function renderSide() {
       const open = S.openCols.has(c.id);
       list.append(h('div', { class: 'colRow',
         onclick: () => { open ? S.openCols.delete(c.id) : S.openCols.add(c.id); renderSide(); },
+        ondragover: (e) => {
+          e.preventDefault();
+          e.currentTarget.classList.add('drag-over');
+          if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+        },
+        ondragleave: (e) => { e.currentTarget.classList.remove('drag-over'); },
+        ondrop: async (e) => {
+          e.preventDefault();
+          e.currentTarget.classList.remove('drag-over');
+          const reqId = e.dataTransfer.getData('requestId');
+          if (!reqId) return;
+          try {
+            await moveRequestTo(reqId, c.id, null);
+            await refresh();
+            renderSide();
+            toast('Request moved to collection');
+          } catch (err) { toast(err.message, true); }
+        },
         oncontextmenu: (e) => { e.preventDefault(); e.stopPropagation(); showColCtx(e, c); },
       },
 
@@ -842,7 +1008,7 @@ function reqRow(q) {
     class: 'reqRow' + (q.id === S.reqId ? ' on' : ''),
     draggable: 'true',
     ondragstart: (e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('requestId', q.id); },
-    ondragend: () => document.querySelectorAll('.folderRow.drag-over').forEach(el => el.classList.remove('drag-over')),
+    ondragend: () => document.querySelectorAll('.folderRow.drag-over, .colRow.drag-over').forEach(el => el.classList.remove('drag-over')),
     onclick: () => openRequest(q.id),
     oncontextmenu: (e) => { e.preventDefault(); e.stopPropagation(); openRequest(q.id).then(() => showReqCtx(e, q)); },
   },
@@ -913,6 +1079,7 @@ function showFolderCtx(e, f, c) {
 
 async function showReqCtx(e, q) {
   const meta = findReqMeta(q.id);
+  const allCols = S.state.collections || [];
   ctxMenu.show(e.clientX, e.clientY, [
     { icon: '↗', label: 'Open', action: () => openRequest(q.id) },
     { icon: '⧉', label: 'Duplicate', action: async () => {
@@ -937,8 +1104,22 @@ async function showReqCtx(e, q) {
         await copyText(out.curl, 'curl command');
       } catch (err) { toast(err.message, true); }
     }},
+    ...(allCols.length > 1 ? [{ icon: '🗀', label: 'Move to collection…', action: async () => {
+      const opts = allCols.map(c => ({ value: String(c.id), label: c.name, hint: String(c.id) === String(meta?.col.id) ? 'current' : '' }));
+      const choice = await modal.pick('Move to collection', opts);
+      if (choice === null) return;
+      const colId = parseInt(choice, 10);
+      try {
+        await moveRequestTo(q.id, colId, null);
+        await refresh();
+        S.openCols.add(colId);
+        renderSide();
+        if (S.reqId === q.id) openRequest(q.id);
+        toast('Moved to collection');
+      } catch (err) { toast(err.message, true); }
+    }}] : []),
     '-',
-    ...(meta && meta.col.folders.length ? [{ icon: '🗀', label: 'Move to folder…', action: async () => {
+    ...(meta && meta.col.folders.length ? [{ icon: '▤', label: 'Move to folder…', action: async () => {
       const folderOpts = [
         { value: 'root', label: '(collection root)' },
         ...meta.col.folders.map(f => ({ value: String(f.id), label: f.name })),
@@ -1102,10 +1283,14 @@ function kvTable(obj, { onchange, secretKeys } = {}) {
     onchange(next);
   };
   const addRow = (k = '', v = '') => {
+    let keyInput;
+    let valueInput;
     const tr = h('tr', { 'data-row': 1 },
-      h('td', {}, h('input', { type: 'text', value: k, placeholder: 'Key', onchange: sync })),
-      h('td', {}, h('input', { type: 'text', value: v, placeholder: 'Value', onchange: sync })),
+      h('td', {}, keyInput = h('input', { type: 'text', value: k, placeholder: 'Key', onchange: sync })),
+      h('td', {}, valueInput = h('input', { type: 'text', value: v, placeholder: 'Value', onchange: sync })),
       h('td', {}, h('button', { class: 'delRow', onclick: () => { tr.remove(); sync(); } }, '✕')));
+    decorateVarInput(keyInput);
+    decorateVarInput(valueInput);
     table.append(tr);
   };
   rows.forEach(([k, v]) => addRow(k, v));
@@ -1162,8 +1347,7 @@ function renderRequest() {
         oninput: (e) => { spec.url = e.target.value; setReqDirty(true); save(); } }),
       h('button', { class: 'btn dark', id: 'sendBtn', onclick: send }, 'Send'),
     ),
-    h('div', { class: 'note', style: 'margin:0 12px 10px' },
-      'URL and header values support variables like {{baseUrl}} and {{apiToken}}. Resolution order: request vars → folder vars → collection vars → selected environment vars/secrets (RELAY_SECRET_*).'),
+    h('div', { style: 'padding:0 12px 10px', id: 'urlVarWrap' }),
     h('div', { class: 'tabs' }, ['params', 'authorization', 'headers', 'body', 'assertions', 'scripts', 'vars'].map(t =>
       h('button', { class: S.tab === t ? 'on' : '', onclick: () => { S.tab = t; renderRequest(); } },
         t[0].toUpperCase() + t.slice(1),
@@ -1171,12 +1355,20 @@ function renderRequest() {
         t === 'scripts' && (spec.scripts?.preRequest || spec.scripts?.tests) ? h('span', { class: 'n' }, '●') : ''))),
     h('div', { class: 'tabBody', id: 'tabBody' }));
   work.append(editor);
+  const urlInput = editor.querySelector('#url');
+  decorateVarInput(urlInput);
+  const urlVarWrap = editor.querySelector('#urlVarWrap');
+  const urlChips = renderVarChips(spec.url || '', { title: 'URL variables' });
+  if (urlChips) urlVarWrap.append(urlChips);
 
   const tb = editor.querySelector('#tabBody');
   if (S.tab === 'params') {
     tb.append(kvTable(spec.query, { onchange: (v) => { spec.query = v; setReqDirty(true); save(); } }));
   } else if (S.tab === 'headers') {
     tb.append(h('div', { class: 'note', style: 'margin-bottom:8px' }, 'Header values support variables, e.g. Authorization: Bearer {{apiToken}}'));
+    const hdrText = Object.entries(spec.headers || {}).map(([k, v]) => `${k}: ${v}`).join('\n');
+    const hdrChips = renderVarChips(hdrText, { title: 'Header variables' });
+    if (hdrChips) tb.append(hdrChips);
     const inh = inheritedHeaderRows(); if (inh) tb.append(inh);
     tb.append(kvTable(spec.headers, { onchange: (v) => { spec.headers = v; setReqDirty(true); save(); } }));
   } else if (S.tab === 'vars') {
@@ -1208,25 +1400,31 @@ function renderRequest() {
     tb.append(h('div', { class: 'note' }, 'Reference secrets by variable ({{apiToken}}) — values come from the selected environment and RELAY_SECRET_* and are masked everywhere.'));
   } else if (S.tab === 'body') {
     const body = spec.body || { type: 'json', content: '' };
-    tb.append(h('div', { class: 'formRow' }, h('label', {}, 'Type'),
-      h('select', { onchange: (e) => { spec.body = { ...body, type: e.target.value }; setReqDirty(true); save(); renderRequest(); } },
-        ['json', 'xml', 'raw', 'urlencoded'].map(t => h('option', { value: t, selected: body.type === t ? '' : undefined }, t)))));
-    if (body.type === 'json') {
-      const bodyEditor = jsonEditor(body.content || '', (content) => {
-        spec.body = { ...body, content };
-        if (!spec.body.content) spec.body = null;
-        setReqDirty(true);
-        save();
-      });
+    tb.append(h('div', { class: 'bodyToolbar' }, h('label', {}, 'Body type'),
+      h('select', { onchange: (e) => {
+        const nextType = e.target.value;
+        spec.body = nextType === 'none' ? null : { type: nextType, content: body.content || '', formData: body.formData || [] };
+        if (nextType === 'formdata' && !(spec.body.formData || []).length) spec.body.formData = [{ key: '', value: '', type: 'text' }];
+        setReqDirty(true); save(); renderRequest();
+      } },
+        ['none', 'json', 'xml', 'raw', 'urlencoded', 'formdata'].map(t => h('option', { value: t, selected: (body.type || 'none') === t ? '' : undefined }, t === 'formdata' ? 'form-data' : t)))));
+    if (!spec.body) {
+      tb.append(h('div', { class: 'note' }, 'No request body will be sent.'));
+    } else if (body.type === 'formdata') {
+      tb.append(formDataEditor(body, () => { setReqDirty(true); save(); }));
+    } else if (body.type === 'json') {
+      const bodyChips = renderVarChips(body.content || '', { title: 'Body variables' });
+      if (bodyChips) tb.append(bodyChips);
+      const bodyEditor = jsonEditor(body.content || '', (content) => updateBodyContent(body, content, save));
+      bodyEditor.classList.add('bodyEditor');
       tb.append(bodyEditor);
     } else {
-      tb.append(h('textarea', { class: 'body', placeholder: '{ "id": "{{testIdNumber}}" }',
-        oninput: (e) => {
-          spec.body = { ...body, content: e.target.value };
-          if (!spec.body.content) spec.body = null;
-          setReqDirty(true);
-          save();
-        } }, body.content || ''));
+      const bodyChips = renderVarChips(body.content || '', { title: 'Body variables' });
+      if (bodyChips) tb.append(bodyChips);
+      const rawBody = h('textarea', { class: 'body', placeholder: '{ "id": "{{testIdNumber}}" }',
+        oninput: (e) => updateBodyContent(body, e.target.value, save) }, body.content || '');
+      decorateVarInput(rawBody);
+      tb.append(rawBody);
     }
   } else if (S.tab === 'assertions') {
     tb.append(buildAssertionsEditor(spec, () => { setReqDirty(true); save(); }));
@@ -1298,6 +1496,7 @@ function highlightJS(code) {
 
 function highlightJSON(code) {
   const escape = (s) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const markVars = (s) => s.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, '<span class="var-token">{{$1}}</span>');
   const tokens = [];
   let i = 0;
   while (i < code.length) {
@@ -1309,9 +1508,9 @@ function highlightJSON(code) {
       }
       const nextNonWs = code.slice(j).match(/\S/);
       if (nextNonWs && nextNonWs[0] === ':') {
-        tokens.push(`<span class="json-k">${escape(s)}</span>`);
+        tokens.push(`<span class="json-k">${markVars(escape(s))}</span>`);
       } else {
-        tokens.push(`<span class="json-s">${escape(s)}</span>`);
+        tokens.push(`<span class="json-s">${markVars(escape(s))}</span>`);
       }
       i = j; continue;
     }
@@ -1344,11 +1543,17 @@ function scriptEditor(value, onChange) {
 
   const update = () => {
     const lines = ta.value.split('\n');
-    lineNums.innerHTML = lines.map((_, i) => i+1).join('\n');
+    lineNums.textContent = lines.map((_, i) => i+1).join('\n');
     highlight.innerHTML = highlightJS(ta.value) + '\n';
     onChange(ta.value);
   };
+  const syncScroll = () => {
+    highlight.scrollTop = ta.scrollTop;
+    highlight.scrollLeft = ta.scrollLeft;
+    lineNums.style.transform = `translateY(${-ta.scrollTop}px)`;
+  };
   ta.addEventListener('input', update);
+  ta.addEventListener('scroll', syncScroll);
   ta.addEventListener('keydown', (e) => {
     if (e.key === 'Tab') {
       e.preventDefault();
@@ -1372,11 +1577,17 @@ function jsonEditor(value, onChange) {
 
   const update = () => {
     const lines = ta.value.split('\n');
-    lineNums.innerHTML = lines.map((_, i) => i+1).join('\n');
+    lineNums.textContent = lines.map((_, i) => i+1).join('\n');
     highlight.innerHTML = highlightJSON(ta.value) + '\n';
     onChange(ta.value);
   };
+  const syncScroll = () => {
+    highlight.scrollTop = ta.scrollTop;
+    highlight.scrollLeft = ta.scrollLeft;
+    lineNums.style.transform = `translateY(${-ta.scrollTop}px)`;
+  };
   ta.addEventListener('input', update);
+  ta.addEventListener('scroll', syncScroll);
   ta.addEventListener('keydown', (e) => {
     if (e.key === 'Tab') {
       e.preventDefault();
@@ -1389,6 +1600,56 @@ function jsonEditor(value, onChange) {
   wrap.append(lineNums, highlight, ta);
   setTimeout(update, 0);
   return wrap;
+}
+
+function updateBodyContent(body, content, save) {
+  S.req.spec.body = { ...body, content };
+  if (!S.req.spec.body.content) S.req.spec.body = null;
+  setReqDirty(true);
+  save();
+}
+
+function formDataEditor(body, save) {
+  const fields = (body.formData || []).map(f => ({ type: 'text', ...f }));
+  const table = h('table', { class: 'formData' },
+    h('tr', {},
+      h('th', { style: 'width:36px' }, 'On'),
+      h('th', { style: 'width:26%' }, 'Key'),
+      h('th', { style: 'width:110px' }, 'Type'),
+      h('th', {}, 'Value / file path'),
+      h('th', { style: 'width:34px' }, '')));
+  const sync = () => {
+    const next = [];
+    for (const tr of table.querySelectorAll('tr[data-row]')) {
+      const enabled = tr.querySelector('input[type=checkbox]').checked;
+      const key = tr.querySelector('[data-field=key]').value;
+      const type = tr.querySelector('[data-field=type]').value;
+      const value = tr.querySelector('[data-field=value]').value;
+      const field = { key, type, disabled: !enabled };
+      if (type === 'file') field.file = value;
+      else field.value = value;
+      if (key || value) next.push(field);
+    }
+    S.req.spec.body = { type: 'formdata', formData: next };
+    save();
+  };
+  const addRow = (field = { key: '', value: '', type: 'text' }) => {
+    let valueInput;
+    const tr = h('tr', { 'data-row': 1 },
+      h('td', {}, h('input', { type: 'checkbox', checked: !field.disabled, onchange: sync })),
+      h('td', {}, h('input', { type: 'text', 'data-field': 'key', value: field.key || '', placeholder: 'field', oninput: sync })),
+      h('td', {}, h('select', { 'data-field': 'type', onchange: (e) => {
+        valueInput.placeholder = e.target.value === 'file' ? './upload.pdf' : 'value';
+        sync();
+      } }, ['text', 'file'].map(t => h('option', { value: t, selected: (field.type || 'text') === t ? '' : undefined }, t)))),
+      h('td', {}, valueInput = h('input', { type: 'text', 'data-field': 'value', value: field.type === 'file' ? (field.file || '') : (field.value || ''), placeholder: field.type === 'file' ? './upload.pdf' : 'value', oninput: sync })),
+      h('td', {}, h('button', { class: 'delRow', onclick: () => { tr.remove(); sync(); } }, '✕')));
+    table.append(tr);
+  };
+  fields.forEach(addRow);
+  if (!fields.length) addRow();
+  return h('div', {}, h('div', { class: 'formDataWrap' }, table),
+    h('button', { class: 'addRow', onclick: () => { addRow(); sync(); } }, '+ Add form field'));
 }
 
 const PM_SNIPPETS = [
@@ -1453,6 +1714,7 @@ function renderResponse(card) {
   card = card || $('respCard'); if (!card) return;
   card.innerHTML = '';
   const r = S.last;
+  card.classList.toggle('hasResp', !!r);
   const metaBar = h('div', { id: 'respMeta' }, h('span', { class: 'lbl' }, 'RESPONSE'));
   if (!r) {
     metaBar.append(h('span', { style: 'color:var(--faint)' }, '—'));
