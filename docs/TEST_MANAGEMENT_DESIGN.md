@@ -2,6 +2,45 @@
 
 Relay's test management section should make API testing feel like a first-class QA workflow: author granular checks in the app, keep the test source in the Relay workspace, run the same tests from the UI or CLI, publish JUnit to Azure DevOps, and push traceable executions to Xray Cloud without glue scripts.
 
+## Current Implementation State
+
+This document is the target design and roadmap. The current implementation already includes a substantial UI workflow, but a few storage and CLI details differ from the target design below.
+
+Implemented now:
+
+- Left-rail **Test Management** view in the browser workbench and desktop app.
+- Default UI test cases seeded from existing requests.
+- Multiple test cases per request, stored in the local SQLite workspace database.
+- Test folders and test sets.
+- Test identity fields: name, enabled flag, tags, owner, priority, Xray key, requirements, and test plan key.
+- Assertion and script-test execution for UI-managed tests.
+- Last-run history and assertion/script step details.
+- Xray Cloud settings, credential status, connection test, test validation, test creation, requirement linking, test set creation, and execution push through the UI/local API.
+- CLI `relay run` for request-file assertions and scripts with JUnit or JSON output.
+
+Current request-file metadata shape:
+
+```toml
+name = "Verify Individual"
+method = "POST"
+url = "{{baseUrl}}/aml/v2/verify"
+tags = ["regression", "contract"]
+owner = "qa"
+priority = "high"
+xray_key = "AML-T142"
+requirements = ["AML-88"]
+```
+
+Not implemented yet:
+
+- Nested `[meta.test]` / `[meta.xray]` request metadata.
+- CLI selection flags such as `--select tag=regression`.
+- CLI `--json-out` combined with JUnit in one run.
+- Headless CLI Xray push flags such as `--xray-push`, `--xray-project`, and `--xray-auto-create`.
+- Automatic write-back of UI-managed test case changes to `.req.toml` files as the canonical source of truth.
+
+Until those items land, use `.req.toml` assertions/scripts for CI with `relay run`, and use the workbench for UI Test Management and Xray push.
+
 ## Goals
 
 - Create granular API tests from saved Relay requests.

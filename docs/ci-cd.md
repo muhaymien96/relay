@@ -1,16 +1,22 @@
 # Relay CI/CD Integration Guide
 
-Relay's CLI runner (`relay run`) outputs JUnit XML and JSON reports, making it
-a drop-in test runner in any CI/CD pipeline. No server, no cloud account, no
-configuration beyond environment variables for secrets.
+Relay's CLI runner (`relay run`) outputs JUnit XML or JSON reports, making it a drop-in API test runner in CI/CD pipelines. It runs directly from `.req.toml` files, so CI does not need the browser workbench, desktop app, SQLite database, account, or cloud sync.
+
+Current CLI scope:
+
+- Runs every `*.req.toml` file under a directory in lexical order.
+- Resolves `environments/<name>.toml` files and `RELAY_SECRET_*` secrets.
+- Supports CSV/JSON data-driven runs with `--data`.
+- Supports `--delay`, `--bail`, `--timeout`, `--insecure`, and `--no-redirect`.
+- Writes one report format per run with `--report junit|json --out FILE`.
+- Exits with code `1` when any request, assertion, or script test fails.
+- Does not yet implement `--select`, `--json-out`, or Xray push flags.
 
 ---
 
 ## GitHub Actions
 
-The repository ships a workflow at `.github/workflows/ci.yml` that runs the
-relay CLI's own integration tests via `relay run`. Use the same pattern for
-your collections:
+Use this pattern for API collections:
 
 ```yaml
 # .github/workflows/api-tests.yml
@@ -44,7 +50,7 @@ jobs:
         env:
           RELAY_SECRET_APIKEY: ${{ secrets.RELAY_SECRET_APIKEY }}
 
-      - name: Publish results
+      - name: Publish JUnit results
         uses: mikepenz/action-junit-report@v4
         if: always()
         with:
@@ -104,34 +110,28 @@ Pipelines → Library → Variable Groups, then link the group to your pipeline.
 
 ## Jira / Xray Cloud
 
-Relay can push test execution results directly to Xray Cloud after a
-collection run.
+Relay can push Test Management runs to Xray Cloud from the UI/local API. The headless `relay run` CLI does not yet have Xray push flags.
 
 ### Configuration
 
-1. In the Relay UI → **Settings → Xray Cloud**, set:
-   - **Project key** (e.g. `AML`)
-   - **Test plan key** (optional, e.g. `AML-88`)
+1. In the Relay UI Settings view, set the project key, optional test plan key, optional Cloud GraphQL/auth URL overrides, and optional default labels/component.
 
-2. Set credentials as environment variables (never stored):
-   ```bash
-   export RELAY_XRAY_CLIENT_ID=your-client-id
-   export RELAY_XRAY_CLIENT_SECRET=your-client-secret
-   ```
-   Get credentials from Xray Cloud → API Keys.
+2. Prefer credentials from environment variables: `RELAY_XRAY_CLIENT_ID` and `RELAY_XRAY_CLIENT_SECRET`. Get credentials from Xray Cloud -> API Keys. The UI can also save credentials into the local `relay.db` for a workstation-only setup.
 
-3. Click **Push to Xray** in the runner view after a collection run.
+3. In Test Management, run selected tests and click **Push to Xray**.
 
 ### Request-level traceability
 
-Link a request to an Xray test case by adding a `[scripts]` section with
-the test key in the `.req.toml` file, or via the meta table (future):
+The current request file metadata fields are top-level fields:
 
 ```toml
 # collections/aml/verify-individual.req.toml
 name = "Verify Individual"
 method = "POST"
 url = "{{baseUrl}}/aml/v2/verify"
+tags = ["regression"]
+xray_key = "AML-T142"
+requirements = ["AML-88"]
 
 [[assertions]]
 type = "status"
@@ -146,13 +146,13 @@ pm.test("result is VERIFIED", function() {
 '''
 ```
 
+When the UI seeds default Test Management cases from request files, it copies `tags`, `owner`, `priority`, `xray_key`, `requirements`, assertions, and test scripts into the SQLite test-case records.
+
 ### CI pipeline with Xray push
 
-The target CI path is a headless CLI push from `relay run`, so pipelines do
-not need to start the browser UI server. The design is documented in
-[TEST_MANAGEMENT_DESIGN.md](TEST_MANAGEMENT_DESIGN.md).
+The target CI path is a future headless CLI push from `relay run`, so pipelines should not depend on starting the browser UI server long-term. The design is documented in [TEST_MANAGEMENT_DESIGN.md](TEST_MANAGEMENT_DESIGN.md).
 
-Planned CLI shape:
+Roadmap CLI shape:
 
 ```bash
 relay run collections/regression \
@@ -167,7 +167,7 @@ relay run collections/regression \
 ```
 
 Until those Xray CLI flags are implemented, use the Relay UI API from a
-short-lived local sidecar only as a temporary workaround:
+short-lived local sidecar only as a temporary workaround. This requires a seeded `relay.db` and Xray settings/credentials available to the UI server:
 
 ```bash
 #!/usr/bin/env bash
@@ -238,10 +238,10 @@ to the secret variable name in your environment TOML file:
 
 ```toml
 # environments/sit.toml
+secrets = ["apiKey", "bearerToken"]
+
 [vars]
 baseUrl = "https://sit.example.com"
-
-secrets = ["apiKey", "bearerToken"]
 ```
 
 Maps to environment variables:
@@ -251,4 +251,4 @@ RELAY_SECRET_BEARERTOKEN=your-token
 ```
 
 Export them in your CI pipeline's secret store and inject them as environment
-variables — they're never stored in files or the relay database.
+variables. Environment secret values are not stored in request files.

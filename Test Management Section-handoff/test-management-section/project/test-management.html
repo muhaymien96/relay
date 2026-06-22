@@ -1,0 +1,1763 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Relay — Test Management</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #f4f5fa; --panel: #ffffff; --line: #e6e8f2; --line2: #d9dcea;
+    --fg: #1c1f33; --dim: #7c819a; --faint: #a4a8bd;
+    --ink: #28287a; --ink-hover: #1d1d5e; --ink-soft: #eceefc;
+    --green: #0e9f6e; --red: #d64545; --amber: #c26a1b; --blue: #2563eb; --purple: #7c3aed;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 13px/1.5 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+         display: flex; flex-direction: column;
+         -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+         text-rendering: optimizeLegibility; letter-spacing: -0.003em;
+         font-feature-settings: "cv05", "cv08", "ss01", "cv11"; }
+  /* mono everywhere technical: even color, calm ligatures, tabular figures */
+  .mono, .ro, .method, code, kbd, pre, textarea.scriptEd, .scriptEd, input.mono,
+  .keyInput, .srcPill, .xrayTag, .execKey, .tagExpr, .codePrev, #statusbar,
+  .asrtFields input[type=text], .runMeta, .rt, .reqChip, .inherited, .mapRow .key {
+    font-feature-settings: "tnum" 1, "zero" 1, "ss01" 1, "cv01" 1;
+    font-variant-ligatures: none; -webkit-font-smoothing: antialiased; }
+  #app { flex: 1; display: flex; min-height: 0; overflow-x: auto; }
+  button { font: inherit; cursor: pointer; }
+  input, select, textarea { font: inherit; color: var(--fg); }
+  input[type=text], input[type=password], select, textarea {
+    border: 1px solid var(--line2); border-radius: 7px; padding: 6px 9px;
+    background: #fff; outline: none; }
+  input:focus, textarea:focus, select:focus { border-color: var(--ink); }
+  ::placeholder { color: var(--faint); }
+  :focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+
+  /* ---- nav rail ---- */
+  #rail { width: 185px; flex: none; background: var(--panel); border-right: 1px solid var(--line);
+          display: flex; flex-direction: column; padding: 14px 10px; gap: 4px; }
+  #brand { display: flex; align-items: center; gap: 8px; padding: 0 6px 12px; }
+  #brand .logo { width: 26px; height: 26px; border-radius: 7px; background: var(--ink);
+                 color: #fff; display: grid; place-items: center; font-weight: 800; }
+  #brand b { font-size: 14px; } #brand small { display: block; color: var(--dim); font-size: 10px;
+             text-transform: uppercase; letter-spacing: .06em; }
+  #newReq { margin: 0 2px 12px; padding: 8px; border: 1px solid var(--line2); border-radius: 8px;
+            background: #fff; color: var(--fg); font-weight: 600; }
+  #newReq:hover { border-color: var(--ink); color: var(--ink); }
+  .navItem { display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: 8px;
+             color: var(--dim); border: 0; background: none; text-align: left; width: 100%; font-weight: 500; }
+  .navItem .ico { width: 15px; flex: none; text-align: center; }
+  .navItem:hover { background: var(--ink-soft); color: var(--ink); }
+  .navItem.on { background: var(--ink-soft); color: var(--ink); font-weight: 700; }
+  .navItem:disabled { color: var(--faint); pointer-events: none; }
+  .navItem .tag { margin-left: auto; font-size: 9px; color: var(--faint); border: 1px solid var(--line2);
+                  padding: 0 5px; border-radius: 99px; }
+  #railSpace { flex: 1; }
+
+  /* ---- side panel: suite tree ---- */
+  #side { width: 248px; flex: none; background: var(--panel); border-right: 1px solid var(--line);
+          display: flex; flex-direction: column; min-height: 0; }
+  #sideHead { padding: 14px 14px 8px; }
+  #sideHead h2 { margin: 0; font-size: 11px; letter-spacing: .1em; color: var(--dim); font-weight: 700; }
+  #sideSearch { width: 100%; margin-top: 8px; font-size: 12px; padding: 6px 9px; }
+  #filterChips { display: flex; flex-wrap: wrap; gap: 5px; padding: 10px 12px 8px;
+                 border-bottom: 1px solid var(--line); }
+  .fchip { font-size: 10.5px; border: 1px solid var(--line2); background: #fff; color: var(--dim);
+           border-radius: 99px; padding: 2px 9px; font-weight: 600; display: inline-flex; gap: 5px;
+           align-items: center; white-space: nowrap; }
+  .fchip:hover { border-color: var(--ink); color: var(--ink); }
+  .fchip.on { background: var(--ink-soft); border-color: var(--ink); color: var(--ink); }
+  .fchip .c { font-family: var(--mono); font-size: 9.5px; opacity: .8; }
+  #sideList { flex: 1; overflow: auto; padding: 6px 8px 12px; }
+  .colRow { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 7px;
+            cursor: pointer; font-weight: 600; }
+  .colRow:hover { background: var(--ink-soft); }
+  .colRow .car { color: var(--faint); font-size: 10px; width: 10px; }
+  .colRow .runBtn { margin-left: auto; border: 0; background: none; color: var(--faint); font-size: 12px; }
+  .colRow .runBtn:hover { color: var(--ink); }
+  .folderRow { display: flex; align-items: center; gap: 6px; padding: 5px 8px 5px 18px; color: var(--dim);
+               font-weight: 600; cursor: pointer; border-radius: 7px; }
+  .folderRow:hover { background: var(--ink-soft); }
+  .folderRow .car { color: var(--faint); font-size: 10px; width: 10px; }
+  .reqRow { display: flex; align-items: center; gap: 7px; padding: 5px 8px 5px 22px; border-radius: 7px;
+            cursor: pointer; color: var(--fg); }
+  .reqRow:hover { background: var(--ink-soft); }
+  .reqRow.on { background: var(--ink-soft); outline: 1px dashed var(--ink); }
+  .reqRow .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  .method { font-family: var(--mono); font-size: 9.5px; font-weight: 700; letter-spacing: .03em; flex: none; }
+  .m-GET { color: var(--green); } .m-POST { color: var(--amber); } .m-PUT { color: var(--blue); }
+  .m-PATCH { color: var(--purple); } .m-DELETE { color: var(--red); }
+  .m-HEAD, .m-OPTIONS { color: var(--dim); }
+  /* tree micro-indicators */
+  .lastDot { width: 8px; height: 8px; border-radius: 99px; flex: none; }
+  .lastDot.pass { background: var(--green); }
+  .lastDot.fail { background: var(--red); }
+  .lastDot.never { background: transparent; border: 1.5px solid var(--faint); }
+  .xrayTag { font-family: var(--mono); font-size: 9px; color: var(--ink); background: var(--ink-soft);
+             border-radius: 4px; padding: 0 4px; flex: none; }
+  .unlinkedDot { width: 7px; height: 7px; border-radius: 99px; background: var(--faint); opacity: .45; flex: none; }
+
+  /* ---- main ---- */
+  #main { flex: 1; display: flex; flex-direction: column; min-width: 650px; }
+  #topbar { height: 50px; display: flex; align-items: center; gap: 10px; padding: 0 18px;
+            background: var(--panel); border-bottom: 1px solid var(--line); }
+  #crumb { color: var(--dim); font-weight: 600; }
+  #crumb b { color: var(--fg); }
+  #crumb .sep { color: var(--faint); margin: 0 6px; }
+  #topbar .grow { flex: 1; }
+  .btn { border: 1px solid var(--line2); background: #fff; border-radius: 8px; padding: 7px 14px;
+         font-weight: 600; color: var(--fg); white-space: nowrap; }
+  .btn:hover { border-color: var(--ink); color: var(--ink); }
+  .btn.dark { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .btn.dark:hover { background: var(--ink-hover); }
+  .btn.sm { padding: 5px 10px; font-size: 12px; }
+  .btn:disabled { opacity: .5; pointer-events: none; }
+  #content { flex: 1; display: flex; min-height: 0; }
+  #work { flex: 1; display: flex; flex-direction: column; min-width: 420px; padding: 16px 18px; gap: 14px;
+          overflow: auto; align-content: flex-start; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+          min-width: 0; max-width: 100%; overflow: hidden; flex: none; }
+  .secHd { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line);
+           font-size: 10px; letter-spacing: .08em; color: var(--dim); font-weight: 700; text-transform: uppercase; }
+  .secHd .n { background: var(--ink-soft); color: var(--ink); border-radius: 99px; padding: 0 7px;
+              font-size: 10px; letter-spacing: 0; }
+  .secHd .grow { flex: 1; }
+  .secBody { padding: 12px 14px; }
+
+  /* identity */
+  .idTop { display: flex; align-items: center; gap: 10px; }
+  #testName { border: 0; font-weight: 700; font-size: 15px; flex: 1; padding: 0 0 2px; min-width: 0; }
+  #testName:focus { outline: none; border-bottom: 1px dashed var(--ink); }
+  .idGrid { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 14px; margin-top: 12px; align-items: center; }
+  .idGrid > * { min-width: 0; }
+  .idGrid .k { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); font-weight: 700; align-self: center; }
+  .mono { font-family: var(--mono); }
+  .ro { font-family: var(--mono); font-size: 12px; color: var(--fg); overflow-wrap: anywhere; }
+  .srcPill { font-family: var(--mono); font-size: 11px; color: var(--dim); border: 1px solid var(--line2);
+             background: #fafbfe; border-radius: 99px; padding: 2px 4px 2px 9px; display: inline-flex; gap: 6px;
+             align-items: center; cursor: help; max-width: 100%; }
+  .srcPill .pathtxt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 2.5em; flex: 1 1 auto; }
+  .srcPill .sot { font-family: "Inter", system-ui, sans-serif; font-size: 9px; letter-spacing: .03em;
+                  color: var(--ink); background: var(--ink-soft); border-radius: 99px; padding: 1px 7px;
+                  font-weight: 700; flex: none; white-space: nowrap; }
+  .tagWrap { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .tagChip { font-size: 11px; border-radius: 99px; padding: 2px 4px 2px 10px; font-weight: 600;
+             background: var(--ink-soft); color: var(--ink); display: inline-flex; align-items: center; gap: 4px; }
+  .tagChip button { border: 0; background: none; color: var(--ink); opacity: .6; font-size: 13px; line-height: 1; padding: 0 3px; }
+  .tagChip button:hover { opacity: 1; }
+  .addTag { font-size: 11px; border: 1px dashed var(--line2); background: none; color: var(--dim);
+            border-radius: 99px; padding: 2px 10px; font-weight: 600; }
+  .addTag:hover { color: var(--ink); border-color: var(--ink); }
+  .idInline { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .idInline select { padding: 4px 8px; font-size: 12px; min-width: 78px; }
+  .prio { font-size: 10px; font-weight: 800; letter-spacing: .04em; border-radius: 4px; padding: 2px 7px; }
+  .prio.high { background: #fdecec; color: var(--red); }
+  .prio.med { background: #fdf3e6; color: var(--amber); }
+  .prio.low { background: var(--ink-soft); color: var(--ink); }
+  /* toggle */
+  .toggle { position: relative; width: 34px; height: 19px; border-radius: 99px; background: var(--line2);
+            border: 0; padding: 0; flex: none; transition: background .15s; }
+  .toggle::after { content: ""; position: absolute; top: 2px; left: 2px; width: 15px; height: 15px;
+                   border-radius: 99px; background: #fff; transition: transform .15s; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+  .toggle.on { background: var(--green); }
+  .toggle.on::after { transform: translateX(15px); }
+
+  /* assertion builder */
+  table.asrt { width: 100%; border-collapse: collapse; }
+  table.asrt th { text-align: left; font-size: 10px; letter-spacing: .08em; color: var(--dim);
+                  text-transform: uppercase; padding: 6px 10px; border-bottom: 1px solid var(--line); font-weight: 700; }
+  table.asrt td { padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  table.asrt tr:hover td { background: #fafbfe; }
+  .asrtType { font-size: 10px; font-weight: 800; letter-spacing: .03em; text-transform: uppercase;
+              border-radius: 4px; padding: 2px 7px; white-space: nowrap; }
+  .asrtType.status { background: #e7f0fd; color: var(--blue); }
+  .asrtType.header { background: var(--ink-soft); color: var(--ink); }
+  .asrtType.json { background: #f0e9fd; color: var(--purple); }
+  .asrtType.text { background: #fdf3e6; color: var(--amber); }
+  .asrtType.timing { background: #e7f7f0; color: var(--green); }
+  .asrtType.script { background: #f1f2f9; color: var(--dim); }
+  .asrtFields { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .asrtFields input[type=text] { border: 1px solid var(--line2); background: #fff; font-family: var(--mono);
+                                 font-size: 12px; padding: 3px 7px; border-radius: 6px; }
+  .asrtFields input.exp { min-width: 90px; }
+  .asrtFields input.path { min-width: 150px; }
+  .asrtFields select { border: 1px solid var(--line2); background: #fff; font-size: 11.5px;
+                       padding: 3px 6px; border-radius: 6px; color: var(--dim); }
+  .asrtFields .unit { font-family: var(--mono); font-size: 11px; color: var(--faint); }
+  td.asrtRes { width: 1%; white-space: nowrap; }
+  td.asrtDel { width: 1%; }
+  .chip { font-size: 11px; border-radius: 99px; padding: 2px 10px; font-weight: 600; white-space: nowrap; }
+  .chip.ok { background: #e7f7f0; color: var(--green); }
+  .chip.bad { background: #fdecec; color: var(--red); }
+  .chip.neutral { background: #f1f2f9; color: var(--dim); }
+  .delRow { border: 0; background: none; color: var(--faint); font-size: 14px; padding: 0 4px; }
+  .delRow:hover { color: var(--red); }
+  .addRow { margin: 10px 14px 12px; width: calc(100% - 28px); border: 1px dashed var(--line2); background: none;
+            color: var(--dim); padding: 7px; border-radius: 7px; font-weight: 600; }
+  .addRow:hover { color: var(--ink); border-color: var(--ink); }
+  /* script assertion row */
+  .scriptRow td { background: #fafbfe; }
+  .scriptEd { font-family: var(--mono); font-size: 12px; width: 100%; min-height: 84px; resize: vertical;
+              border: 1px solid var(--line2); border-radius: 7px; padding: 8px 10px; line-height: 1.6;
+              white-space: pre; overflow: auto; }
+
+  /* traceability */
+  .traceGrid { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 9px 14px; align-items: center; }
+  .traceGrid > * { min-width: 0; }
+  .traceGrid .k { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); font-weight: 700; }
+  .keyInput { font-family: var(--mono); font-size: 12.5px; width: 160px; max-width: 100%; }
+  .reqChip { font-family: var(--mono); font-size: 11px; border-radius: 6px; padding: 2px 4px 2px 8px;
+             background: var(--ink-soft); color: var(--ink); display: inline-flex; align-items: center; gap: 4px; font-weight: 600; }
+  .reqChip button { border: 0; background: none; color: var(--ink); opacity: .55; font-size: 13px; line-height: 1; padding: 0 2px; }
+  .reqChip button:hover { opacity: 1; }
+  .inherited { color: var(--faint); font-family: var(--mono); font-size: 12px; }
+  .traceActions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 4px; }
+  .valMsg { font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 5px; margin-left: 4px; }
+  .valMsg.ok { color: var(--green); }
+  .valMsg.bad { color: var(--red); font-family: var(--mono); }
+  /* coverage strip */
+  .covStrip { display: flex; align-items: stretch; gap: 0; margin-top: 14px; border: 1px solid var(--line);
+              border-radius: 8px; overflow: hidden; }
+  .covNode { flex: 1; padding: 10px 14px; display: flex; flex-direction: column; gap: 3px; position: relative; }
+  .covNode + .covNode { border-left: 1px solid var(--line); }
+  .covNode .lbl { font-size: 9px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); font-weight: 700; }
+  .covNode .val { font-family: var(--mono); font-size: 12.5px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  .covNode .arrow { position: absolute; right: -9px; top: 50%; transform: translateY(-50%); z-index: 2;
+                    width: 18px; height: 18px; border-radius: 99px; background: var(--panel); border: 1px solid var(--line);
+                    display: grid; place-items: center; font-size: 10px; color: var(--dim); }
+  .covNode.good { background: #f3fbf7; } .covNode.good .val { color: var(--green); }
+  .covNode.bad { background: #fdf4f4; } .covNode.bad .val { color: var(--red); }
+  .covNode.gap { background: repeating-linear-gradient(45deg, #fafbfe, #fafbfe 6px, #f1f2f9 6px, #f1f2f9 12px); }
+  .covNode.gap .val { color: var(--faint); }
+
+  /* last run */
+  .runMeta { display: flex; gap: 18px; align-items: baseline; padding: 11px 14px; border-bottom: 1px solid var(--line);
+             font-family: var(--mono); font-size: 12.5px; }
+  .runMeta .lbl { font-size: 9.5px; letter-spacing: .1em; color: var(--dim); font-weight: 700; font-family: "Inter", system-ui, sans-serif; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }
+  .pill .dot { width: 7px; height: 7px; border-radius: 99px; background: var(--green); }
+  .pill.bad .dot { background: var(--red); }
+  .pill.bad { color: var(--red); } .pill.ok { color: var(--green); }
+  .runRow { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-bottom: 1px solid var(--line); }
+  .runRow:last-child { border-bottom: 0; }
+  .runRow .ic { font-weight: 800; width: 14px; text-align: center; }
+  .runRow .ic.ok { color: var(--green); } .runRow .ic.bad { color: var(--red); }
+  .runRow .rdesc { flex: 1; }
+  .runRow .rdesc .mono { color: var(--dim); }
+  .runRow .rt { font-family: var(--mono); font-size: 11px; color: var(--faint); }
+  .runErr { font-family: var(--mono); font-size: 12px; color: var(--red); background: #fdf3f3;
+            border: 1px solid #f3d4d4; border-radius: 7px; padding: 8px 12px; margin: 0 14px 10px 38px; }
+  .runErr .lbl { color: var(--dim); display: block; font-size: 10px; margin-bottom: 2px; letter-spacing: .06em; }
+  .empty { color: var(--dim); padding: 32px; text-align: center; }
+  /* ---- variable / technical highlighting ---- */
+  .tok-var { color: var(--amber); background: #fbf2e6; border: 1px solid #f0ddc2;
+             border-radius: 4px; padding: 0 2px; font-size: .94em; font-weight: 600;
+             cursor: help; white-space: nowrap; }
+  .tok-var .br { color: var(--amber); opacity: .5; }
+  .tok-path { color: var(--purple); font-weight: 600; }
+  .tok-path .dot { color: var(--faint); font-weight: 400; }
+  .tok-str { color: var(--green); }
+  .tok-num { color: var(--blue); font-feature-settings: "tnum" 1; }
+  .tok-kw { color: var(--dim); font-weight: 600; }
+  .tok-mac { color: var(--ink); font-weight: 600; }
+  .tok-obj { color: var(--dim); }
+
+  /* ---- assertion view switcher + quantifiers + CEL ---- */
+  .asrtType.forall { background: #e7f0fd; color: var(--blue); }
+  .asrtType.exists { background: #f0e9fd; color: var(--purple); }
+  .asrtType.count  { background: #e7f7f0; color: var(--green); }
+  .viewSeg { display: inline-flex; border: 1px solid var(--line2); border-radius: 7px; overflow: hidden; }
+  .viewSeg button { border: 0; background: #fff; padding: 4px 11px; color: var(--dim); font-weight: 700;
+                    font-size: 10px; letter-spacing: .04em; text-transform: uppercase; border-right: 1px solid var(--line); }
+  .viewSeg button:last-child { border-right: 0; }
+  .viewSeg button.on { background: var(--ink-soft); color: var(--ink); }
+  .celLine { font-family: var(--mono); font-size: 11px; color: var(--dim); margin-top: 4px;
+             padding-left: 1px; white-space: pre-wrap; word-break: break-word; }
+  .celLine .tok-obj { color: var(--faint); }
+  .compiledHd { display: flex; align-items: center; gap: 8px; padding: 9px 14px 0; }
+  .compiledHd .lang { font-family: var(--mono); font-size: 10px; font-weight: 700; color: var(--ink);
+                      background: var(--ink-soft); border-radius: 4px; padding: 1px 7px; }
+  .compiledHd .note { font-size: 11px; color: var(--faint); }
+  .celEd { font-family: var(--mono); font-size: 12.5px; line-height: 1.7; width: calc(100% - 28px);
+           margin: 8px 14px 14px; min-height: 120px; resize: vertical; border: 1px solid var(--line2);
+           border-radius: 8px; padding: 10px 12px; white-space: pre; overflow: auto; tab-size: 2;
+           font-feature-settings: "tnum" 1, "zero" 1; }
+  .celPre { font-family: var(--mono); font-size: 12.5px; line-height: 1.7; margin: 8px 14px 14px;
+            border: 1px solid var(--line); border-radius: 8px; padding: 11px 13px; white-space: pre-wrap;
+            word-break: break-word; background: #f8f9fe; color: var(--fg); overflow: auto; }
+  .fromRespBtn { border: 1px solid var(--line2); background: #fff; color: var(--ink); border-radius: 7px;
+                 padding: 4px 10px; font-weight: 600; font-size: 12px; }
+  .fromRespBtn:hover { border-color: var(--ink); background: var(--ink-soft); }
+
+  /* ---- response JSON tree ---- */
+  .jtree { font-family: var(--mono); font-size: 12.5px; line-height: 1.85; border: 1px solid var(--line);
+           border-radius: 8px; padding: 10px 12px; background: #fcfcff; max-height: 52vh; overflow: auto; }
+  .jrow { display: flex; align-items: center; gap: 6px; padding: 1px 0; border-radius: 5px; }
+  .jrow:hover { background: var(--ink-soft); }
+  .jind { display: inline-block; }
+  .jkey { color: var(--purple); }
+  .jpunct { color: var(--faint); }
+  .jval { cursor: pointer; border-radius: 4px; padding: 0 3px; }
+  .jval.str { color: var(--green); } .jval.num { color: var(--blue); } .jval.bool { color: var(--amber); }
+  .jval.null { color: var(--faint); }
+  .jval:hover { outline: 1px dashed var(--ink); background: #fff; }
+  .jval::after { content: "+ assert"; font-family: "Inter", system-ui, sans-serif; font-size: 9px;
+                 font-weight: 700; color: var(--ink); background: var(--ink-soft); border-radius: 4px;
+                 padding: 0 5px; margin-left: 7px; opacity: 0; transition: opacity .1s; }
+  .jval:hover::after { opacity: 1; }
+  .jtool { font-family: "Inter", system-ui, sans-serif; font-size: 9.5px; font-weight: 700; color: var(--ink);
+           border: 1px solid var(--line2); background: #fff; border-radius: 4px; padding: 0 6px; margin-left: 4px;
+           white-space: nowrap; flex: none; }
+  .jtool:hover { background: var(--ink-soft); border-color: var(--ink); }
+  .jcount { color: var(--faint); font-size: 11px; }
+  .empty .sub { font-size: 12px; color: var(--faint); margin-top: 4px; }
+
+  /* badges */
+  .badge { font-size: 10px; font-weight: 800; letter-spacing: .05em; border-radius: 4px; padding: 2px 8px; }
+  .badge.fail { background: #fdecec; color: var(--red); border: 1px solid #f3c8c8; }
+  .badge.pass { background: #e7f7f0; color: var(--green); border: 1px solid #c4ebd9; }
+
+  /* ---- meta rail: run & push ---- */
+  #meta { width: 230px; border-left: 1px solid var(--line); background: var(--panel); padding: 16px 14px;
+          overflow: auto; flex: none; }
+  #meta h3 { margin: 0 0 12px; font-size: 13px; }
+  .metaCard { border: 1px solid var(--line); border-radius: 8px; padding: 11px; margin-bottom: 12px; }
+  .metaCard .lbl { font-size: 9.5px; letter-spacing: .1em; color: var(--dim); font-weight: 700;
+                   text-transform: uppercase; display: block; margin-bottom: 8px; }
+  #envSel { width: 100%; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chips .att { border: 1px solid var(--line2); border-radius: 99px; padding: 3px 11px; font-weight: 600;
+                background: #fff; color: var(--dim); font-size: 12px; }
+  .chips .att:hover { border-color: var(--ink); color: var(--ink); }
+  .chips .att.on { background: var(--ink-soft); border-color: var(--ink); color: var(--ink); }
+  .tagExpr { width: 100%; font-family: var(--mono); font-size: 11.5px; margin-top: 8px; }
+  .willRun { font-size: 11px; color: var(--dim); margin-top: 8px; }
+  .willRun b { color: var(--ink); font-family: var(--mono); }
+  .full { width: 100%; justify-content: center; display: flex; align-items: center; gap: 8px; }
+  .mb8 { margin-bottom: 8px; }
+  .spin { width: 13px; height: 13px; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff;
+          border-radius: 99px; display: inline-block; animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .mapRow { display: flex; align-items: center; gap: 7px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 11.5px; }
+  .mapRow:last-child { border-bottom: 0; }
+  .mapRow .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mapRow .key { font-family: var(--mono); font-size: 10.5px; color: var(--dim); }
+  .maptag { font-size: 9px; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; border-radius: 4px; padding: 1px 6px; }
+  .maptag.link { background: var(--ink-soft); color: var(--ink); }
+  .maptag.create { background: #e7f7f0; color: var(--green); }
+  .maptag.skip { background: #fdf3e6; color: var(--amber); }
+  .execKey { font-family: var(--mono); font-size: 12px; color: var(--ink); background: var(--ink-soft);
+             border-radius: 6px; padding: 4px 8px; display: inline-block; margin-bottom: 8px; }
+  .pushStat { display: flex; align-items: center; gap: 6px; font-size: 11.5px; padding: 4px 0; }
+  .pushStat .ic { width: 12px; }
+  .exportRow { display: flex; gap: 8px; }
+  .exportRow .btn { flex: 1; }
+
+  /* ---- side header + config link ---- */
+  .sideHeadTop { display: flex; align-items: center; gap: 8px; }
+  .sideHeadTop h2 { flex: 1; }
+  #newTestBtn { padding: 3px 9px; font-size: 11px; }
+  .cfgLink { border: 0; background: none; color: var(--ink); font-size: 10px; font-weight: 700;
+             letter-spacing: .04em; text-transform: uppercase; padding: 0; cursor: pointer; }
+  .cfgLink:hover { color: var(--ink-hover); text-decoration: underline; }
+
+  /* ---- modal ---- */
+  .ovl { position: fixed; inset: 0; background: rgba(28,31,51,.45); z-index: 8000;
+         display: none; align-items: center; justify-content: center; padding: 24px; }
+  .ovl.open { display: flex; }
+  .mbox { background: var(--panel); border: 1px solid var(--line2); border-radius: var(--radius);
+          width: 470px; max-width: 100%; max-height: 88vh; display: flex; flex-direction: column;
+          box-shadow: 0 16px 48px rgba(0,0,0,.18); }
+  .mbox.wide { width: 640px; }
+  .mhd { display: flex; align-items: center; gap: 10px; padding: 15px 18px; border-bottom: 1px solid var(--line); }
+  .mhd .mttl { font-weight: 700; font-size: 15px; }
+  .mhd .msub { font-size: 11px; color: var(--dim); margin-top: 1px; }
+  .mclose { margin-left: auto; border: 0; background: none; color: var(--dim); font-size: 19px;
+            line-height: 1; padding: 2px 7px; border-radius: 6px; }
+  .mclose:hover { background: var(--ink-soft); color: var(--ink); }
+  .mbody { padding: 16px 18px; overflow: auto; }
+  .mfoot { display: flex; gap: 8px; justify-content: flex-end; align-items: center;
+           padding: 12px 18px; border-top: 1px solid var(--line); }
+  .mfoot .grow { flex: 1; }
+  .fsec { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim);
+          font-weight: 700; margin: 4px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+  .fsec:not(:first-child) { margin-top: 18px; }
+  .frow { margin-bottom: 13px; }
+  .frow.two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .frow.three { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  .flbl { display: block; font-size: 10px; letter-spacing: .06em; text-transform: uppercase;
+          color: var(--dim); font-weight: 700; margin-bottom: 5px; }
+  .frow > input[type=text], .frow > input[type=password], .frow > input[type=email],
+  .frow > select, .frow > textarea { width: 100%; }
+  .frow textarea { min-height: 64px; resize: vertical; }
+  .fhint { font-size: 10.5px; color: var(--faint); margin-top: 4px; }
+  .fhint .mono { font-family: var(--mono); color: var(--dim); }
+  .seg { display: inline-flex; border: 1px solid var(--line2); border-radius: 8px; overflow: hidden; }
+  .seg.full { display: flex; }
+  .seg button { border: 0; background: #fff; padding: 6px 12px; color: var(--dim); font-weight: 600;
+                font-size: 12px; border-right: 1px solid var(--line); flex: 1; white-space: nowrap; }
+  .seg button:last-child { border-right: 0; }
+  .seg button.on { background: var(--ink-soft); color: var(--ink); }
+  .codePrev { font-family: var(--mono); font-size: 11.5px; background: #f8f9fe; border: 1px solid var(--line);
+              border-radius: 8px; padding: 10px 12px; white-space: pre; overflow: auto; max-height: 220px;
+              color: var(--fg); margin: 0; }
+  .connLine { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; }
+  .connLine .d { width: 8px; height: 8px; border-radius: 99px; flex: none; }
+  .connLine.ok { color: var(--green); } .connLine.ok .d { background: var(--green); }
+  .connLine.bad { color: var(--red); } .connLine.bad .d { background: var(--red); }
+  .connLine.idle { color: var(--dim); } .connLine.idle .d { background: var(--faint); }
+  .ckbtn { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12.5px; padding: 5px 0; }
+  .ckbtn input { width: 15px; height: 15px; accent-color: var(--ink); }
+
+  /* ---- footer ---- */
+  #statusbar { height: 24px; background: var(--panel); border-top: 1px solid var(--line);
+               display: flex; align-items: center; gap: 18px; padding: 0 14px; font-family: var(--mono);
+               font-size: 10.5px; color: var(--dim); }
+  #statusbar .dot { width: 6px; height: 6px; border-radius: 99px; background: var(--green);
+                    display: inline-block; margin-right: 5px; }
+  #statusbar .grow { flex: 1; }
+  #toast { position: fixed; bottom: 38px; right: 16px; background: var(--ink); color: #fff;
+           border-radius: 8px; padding: 9px 14px; font-weight: 600; display: none; max-width: 420px; z-index: 9000; }
+  #toast.err { background: var(--red); }
+</style>
+</head>
+<template id="__bundler_thumbnail" data-bg-color="#28287a">
+  <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+    <rect width="1200" height="800" fill="#28287a"/>
+    <rect x="430" y="250" width="340" height="300" rx="40" fill="#ffffff"/>
+    <path d="M520 400 l50 55 l115 -130" fill="none" stroke="#0e9f6e" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+</template>
+<body>
+<div id="app">
+  <nav id="rail">
+    <div id="brand"><div class="logo">R</div><div><b>Relay</b><small>API Workbench</small></div></div>
+    <button id="newReq">New Request</button>
+    <button class="navItem" data-view="collections"><span class="ico">▦</span>Collections</button>
+    <button class="navItem on" data-view="tests"><span class="ico">◎</span>Test Management</button>
+    <button class="navItem" data-view="history"><span class="ico">⟲</span>History</button>
+    <button class="navItem" data-view="environments"><span class="ico">⛁</span>Environments</button>
+    <button class="navItem" data-view="presets"><span class="ico">☰</span>Header Presets</button>
+    <button class="navItem" disabled><span class="ico">▣</span>Mock Servers <span class="tag">v2</span></button>
+    <button class="navItem" disabled><span class="ico">◉</span>Monitor <span class="tag">v2</span></button>
+    <div id="railSpace"></div>
+    <button class="navItem" data-view="settings"><span class="ico">⚙</span>Settings</button>
+  </nav>
+
+  <aside id="side">
+    <div id="sideHead">
+      <div class="sideHeadTop">
+        <h2>TEST SUITES</h2>
+        <button id="newTestBtn" class="btn sm">+ New test</button>
+      </div>
+      <input id="sideSearch" type="text" placeholder="Search tests…" aria-label="Search tests">
+    </div>
+    <div id="filterChips" role="group" aria-label="Filters"></div>
+    <div id="sideList" role="tree" aria-label="Test suite tree"></div>
+  </aside>
+
+  <div id="main">
+    <div id="topbar">
+      <span id="crumb"></span>
+      <span class="grow"></span>
+      <button class="btn sm" id="dupBtn">Duplicate</button>
+      <button class="btn sm" id="perReqBtn" title="Open the per-request assertions tab for this test">Open in request editor</button>
+    </div>
+    <div id="content">
+      <div id="work"></div>
+      <div id="meta"></div>
+    </div>
+  </div>
+</div>
+<div id="statusbar">
+  <span><span class="dot"></span>AGENT ONLINE</span>
+  <span>relay 0.2.0</span>
+  <span id="sbInfo"></span>
+  <span class="grow"></span>
+  <span id="sbXray">xray: connected</span>
+</div>
+<div id="toast"></div>
+
+<script>
+'use strict';
+const $ = (id) => document.getElementById(id);
+const h = (tag, attrs = {}, ...kids) => {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v === undefined || v === null || v === false) continue;
+    if (k === 'class') el.className = v;
+    else if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2), v);
+    else if (k === 'value') el.value = v;
+    else if (k === 'html') el.innerHTML = v;
+    else el.setAttribute(k, v === true ? '' : v);
+  }
+  for (const k of kids.flat()) if (k !== null && k !== undefined && k !== false) el.append(k);
+  return el;
+};
+let toastT;
+function toast(msg, err) {
+  const t = $('toast'); t.textContent = msg; t.className = err ? 'err' : '';
+  t.style.display = 'block'; clearTimeout(toastT);
+  toastT = setTimeout(() => { t.style.display = 'none'; }, 2600);
+}
+const slug = s => s.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
+const rid = (n=900) => 100 + Math.floor(Math.random()*n);
+function download(name, text, type) {
+  const blob = new Blob([text], { type }); const url = URL.createObjectURL(blob);
+  const a = h('a', { href:url, download:name }); document.body.append(a); a.click();
+  a.remove(); setTimeout(()=>URL.revokeObjectURL(url), 1000);
+}
+const escHtml = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+// resolved values for {{vars}} in the active environment (tooltip on hover)
+const ENV_VARS = { baseUrl:'https://api.staging.nobagz.co.za' };
+// highlight {{template vars}} inside an otherwise-plain (URL/path) string
+function hlVars(str) {
+  return escHtml(str).replace(/\{\{\s*([\w.-]+)\s*\}\}/g, (m, name) => {
+    const val = ENV_VARS[name];
+    const tip = val ? name + ' = ' + val : name + ' (unresolved)';
+    return `<span class="tok-var" title="${escHtml(tip)}"><span class="br">{{</span>${escHtml(name)}<span class="br">}}</span></span>`;
+  });
+}
+// highlight an assertion description: JSONPath, quoted strings, numbers, vars
+function hlDesc(str) {
+  let s = escHtml(str);
+  s = s.replace(/\{\{\s*([\w.-]+)\s*\}\}/g, (m,n)=>`<span class="tok-var"><span class="br">{{</span>${escHtml(n)}<span class="br">}}</span></span>`);
+  s = s.replace(/(\$(?:\.[\w$*]+|\[[^\]]+\])+)/g, (m)=>'<span class="tok-path">'+m.replace(/\./g,'<span class="dot">.</span>')+'</span>');
+  s = s.replace(/&quot;([^&]*?)&quot;/g, '<span class="tok-str">&quot;$1&quot;</span>');
+  s = s.replace(/\b(equals|contains|exists|is one of|is 2xx|does not contain|length|total)\b/g, '<span class="tok-kw">$1</span>');
+  s = s.replace(/\b(\d+(?:xx|ms)?)\b/g, '<span class="tok-num">$1</span>');
+  return s;
+}
+
+/* ---------------- generic modal ---------------- */
+function escClose(e) { if (e.key === 'Escape') closeModal(); }
+function closeModal() { const m = $('__modal'); if (m) m.remove(); document.removeEventListener('keydown', escClose); }
+function openModal(opts) {
+  closeModal();
+  const box = h('div', { class:'mbox' + (opts.wide ? ' wide' : '') , role:'dialog', 'aria-modal':'true', 'aria-label':opts.title });
+  box.append(h('div', { class:'mhd' },
+    h('div', {}, h('div', { class:'mttl' }, opts.title), opts.subtitle ? h('div', { class:'msub' }, opts.subtitle) : null),
+    h('button', { class:'mclose', 'aria-label':'Close dialog', onclick:closeModal }, '×')));
+  const body = h('div', { class:'mbody' }); box.append(body);
+  opts.build(body, box);
+  if (opts.actions) { const foot = h('div', { class:'mfoot' }); opts.actions(foot, box); box.append(foot); }
+  const ovl = h('div', { id:'__modal', class:'ovl open', onclick:(e)=>{ if (e.target === ovl) closeModal(); } }, box);
+  document.body.append(ovl);
+  document.addEventListener('keydown', escClose);
+  const first = box.querySelector('input,select,textarea,button:not(.mclose)'); if (first) first.focus();
+}
+function frow(label, control, hint, cls) {
+  return h('div', { class:'frow' + (cls?' '+cls:'') },
+    label ? h('label', { class:'flbl' }, label) : null, control, hint ? h('div', { class:'fhint', html:hint }) : null);
+}
+function segGroup(opts, current, onPick, full) {
+  const g = h('div', { class:'seg' + (full?' full':'') , role:'tablist' });
+  opts.forEach(([val,lbl]) => g.append(h('button', { class: current===val?'on':'', role:'tab',
+    'aria-selected': current===val?'true':'false',
+    onclick:(e)=>{ g.querySelectorAll('button').forEach(b=>{ b.className=''; b.setAttribute('aria-selected','false'); });
+      e.currentTarget.className='on'; e.currentTarget.setAttribute('aria-selected','true'); onPick(val); } }, lbl)));
+  return g;
+}
+
+/* ---------------- Xray / Jira connection config ---------------- */
+const XRAY_CFG = {
+  connected: true, auth: 'cloud',
+  jiraUrl: 'https://nobagz.atlassian.net', email: 'qe@nobagz.co.za', apiToken: '••••••••••••',
+  clientId: 'a1f9c0e2b7', clientSecret: '••••••••••••', apiKey: '',
+  project: 'AML', plan: 'AML-88', testSet: 'AML-S40',
+};
+
+/* ---------------- seed data: AML Verification API ---------------- */
+// Xray tests that "exist" in the linked project (for link-validation)
+const XRAY_EXISTING = new Set(['AML-T142','AML-T143','AML-T144','AML-T160','AML-T201','AML-T202']);
+
+const SUITE = {
+  collection: 'AML', folder: 'verify', project: 'AML', plan: 'AML-88',
+  baseUrl: '{{baseUrl}}',
+  tests: [
+    {
+      id: 'relay-verify-individual', name: 'Verify Individual', method: 'POST',
+      path: '/aml/v2/verify', enabled: true, owner: 'risk-platform', priority: 'high',
+      src: 'collections/aml/verify-individual.req.toml',
+      tags: ['smoke','regression'], xray: 'AML-T142', reqs: ['AML-88'], plan: '',
+      assertions: [
+        { type:'status', op:'equals', exp:'200', res:'ok', desc:'HTTP status equals 200' },
+        { type:'header', name:'Content-Type', op:'contains', exp:'application/json', res:'ok', desc:'Content-Type contains application/json' },
+        { type:'json', path:'$.result.status', op:'equals', exp:'VERIFIED', res:'ok', desc:'$.result.status equals VERIFIED' },
+        { type:'timing', metric:'total', op:'<', exp:'2000', res:'ok', desc:'total < 2000ms' },
+      ],
+      run: { status:'pass', code:200, ms:842, env:'Staging', at:'2026-06-19 09:41' },
+    },
+    {
+      id: 'relay-verify-business', name: 'Verify Business', method: 'POST',
+      path: '/aml/v2/verify/business', enabled: true, owner: 'risk-platform', priority: 'high',
+      src: 'collections/aml/verify-business.req.toml',
+      tags: ['regression'], xray: 'AML-T143', reqs: ['AML-89'], plan: '',
+      assertions: [
+        { type:'status', op:'equals', exp:'200', res:'ok', desc:'HTTP status equals 200' },
+        { type:'json', path:'$.result.status', op:'equals', exp:'VERIFIED', res:'ok', desc:'$.result.status equals VERIFIED' },
+        { type:'json', path:'$.result.entityType', op:'equals', exp:'BUSINESS', res:'ok', desc:'$.result.entityType equals BUSINESS' },
+      ],
+      run: { status:'pass', code:200, ms:1130, env:'Staging', at:'2026-06-19 09:41' },
+    },
+    {
+      id: 'relay-verify-document', name: 'Verify Document', method: 'POST',
+      path: '/aml/v2/verify/document', enabled: true, owner: 'kyc-team', priority: 'high',
+      src: 'collections/aml/verify-document.req.toml',
+      tags: ['regression','contract'], xray: 'AML-T144', reqs: ['AML-91'], plan: '',
+      assertions: [
+        { type:'status', op:'equals', exp:'200', res:'ok', desc:'HTTP status equals 200' },
+        { type:'header', name:'Content-Type', op:'contains', exp:'application/json', res:'ok', desc:'Content-Type contains application/json' },
+        { type:'json', path:'$.result.status', op:'equals', exp:'VERIFIED', res:'bad', desc:'$.result.status equals VERIFIED',
+          err:'Expected "VERIFIED" but got "PENDING_REVIEW" at $.result.status' },
+        { type:'timing', metric:'total', op:'<', exp:'2000', res:'bad', desc:'total < 2000ms',
+          err:'Expected total < 2000ms but request took 3417ms' },
+      ],
+      run: { status:'fail', code:200, ms:3417, env:'Staging', at:'2026-06-19 09:41' },
+    },
+    {
+      id: 'relay-screen-sanctions', name: 'Screen Sanctions List', method: 'GET',
+      path: '/aml/v2/screen/sanctions', enabled: true, owner: 'kyc-team', priority: 'med',
+      src: 'collections/aml/screen-sanctions.req.toml',
+      tags: ['smoke'], xray: '', reqs: [], plan: '',
+      assertions: [
+        { type:'status', op:'is2xx', exp:'2xx', res:null, desc:'HTTP status is 2xx' },
+        { type:'json', path:'$.matches', op:'lengthGt', exp:'0', res:null, desc:'$.matches length > 0' },
+      ],
+      run: null,
+    },
+    {
+      id: 'relay-verify-address', name: 'Verify Address', method: 'GET',
+      path: '/aml/v2/verify/address', enabled: true, owner: 'risk-platform', priority: 'low',
+      src: 'collections/aml/verify-address.req.toml',
+      tags: ['negative'], xray: '', reqs: [], plan: '',
+      assertions: [
+        { type:'status', op:'oneof', exp:'200, 404', res:'ok', desc:'HTTP status is one of 200, 404' },
+        { type:'text', op:'notcontains', exp:'stacktrace', res:'ok', desc:'body does not contain "stacktrace"' },
+      ],
+      run: { status:'pass', code:200, ms:402, env:'Staging', at:'2026-06-18 17:02' },
+    },
+    {
+      id: 'relay-bulk-verify', name: 'Bulk Verify Batch', method: 'POST',
+      path: '/aml/v2/verify/bulk', enabled: false, owner: 'risk-platform', priority: 'med',
+      src: 'collections/aml/bulk-verify.req.toml',
+      tags: ['regression'], xray: 'AML-T160', reqs: [], plan: 'AML-90',
+      assertions: [
+        { type:'status', op:'equals', exp:'202', res:'ok', desc:'HTTP status equals 202' },
+        { type:'json', path:'$.batchId', op:'exists', exp:'', res:'ok', desc:'$.batchId exists' },
+        { type:'timing', metric:'total', op:'<', exp:'5000', res:'ok', desc:'total < 5000ms' },
+      ],
+      run: { status:'pass', code:202, ms:2890, env:'Staging', at:'2026-06-17 11:20' },
+    },
+  ],
+};
+
+/* ---------------- sample response bodies (for the clickable response tree) ---------------- */
+const RESPONSES = {
+  'relay-verify-individual': {
+    result: { status: 'VERIFIED', score: 0.97, entityType: 'INDIVIDUAL', riskBand: 'LOW' },
+    matches: [],
+    checks: [ { type: 'sanctions', passed: true }, { type: 'pep', passed: true }, { type: 'adverse_media', passed: true } ],
+    requestId: 'req_8fa31c4e', processedAt: '2026-06-19T09:41:02Z',
+  },
+  'relay-verify-document': {
+    result: { status: 'PENDING_REVIEW', score: 0.61, entityType: 'INDIVIDUAL', riskBand: 'MEDIUM' },
+    matches: [ { list: 'INTERPOL', confidence: 0.58 } ],
+    checks: [ { type: 'mrz', passed: true }, { type: 'face_match', passed: false } ],
+    requestId: 'req_2b90af11', processedAt: '2026-06-19T09:41:05Z',
+  },
+  'relay-verify-business': {
+    result: { status: 'VERIFIED', score: 0.93, entityType: 'BUSINESS', registrationNo: '2019/445221/07' },
+    matches: [], requestId: 'req_77c1de02', processedAt: '2026-06-19T09:41:02Z',
+  },
+  'relay-screen-sanctions': {
+    matches: [ { list: 'OFAC_SDN', confidence: 0.88, name: 'ACME TRADING LTD' }, { list: 'EU_CONSOLIDATED', confidence: 0.72, name: 'ACME TRADING' } ],
+    screenedAt: '2026-06-20T14:02:11Z', requestId: 'req_aa01bb22',
+  },
+  'relay-verify-address': {
+    result: { status: 'VERIFIED', confidence: 0.81 }, normalized: { city: 'Cape Town', postalCode: '8001', country: 'ZA' },
+    requestId: 'req_addr_9931',
+  },
+  'relay-bulk-verify': {
+    batchId: 'batch_20260617_0042', accepted: 250, rejected: 0, status: 'QUEUED',
+    estimatedSeconds: 180, requestId: 'req_bulk_5510',
+  },
+};
+function sampleFor(t) {
+  return RESPONSES[t.id] || { result: { status: 'OK' }, requestId: 'req_sample', data: {} };
+}
+
+/* ---------------- CEL compiler (visual builder → readable, diffable expression) ---------------- */
+function pathToCEL(p) {
+  if (!p) return 'response.body';
+  let s = String(p).replace(/^\$\.?/, '');
+  if (!s) return 'response.body';
+  const parts = []; let buf = '';
+  s.split('.').forEach(seg => {
+    const m = seg.match(/^([\w$]+)?(\[[^\]]*\])?$/);
+    if (m) parts.push((m[1] ? '.' + m[1] : '') + (m[2] || ''));
+    else parts.push('.' + seg);
+  });
+  return 'response.body' + parts.join('');
+}
+function celVal(v) {
+  if (v === '' || v == null) return '""';
+  if (/^-?\d+(\.\d+)?$/.test(String(v).trim())) return String(v).trim();
+  if (/^(true|false)$/.test(String(v).trim())) return String(v).trim();
+  return JSON.stringify(String(v));
+}
+function celList(v) { return '[' + String(v).split(',').map(s => s.trim()).filter(Boolean).join(', ') + ']'; }
+function toCEL(a) {
+  switch (a.type) {
+    case 'status':
+      if (a.op === 'is2xx') return 'response.status >= 200 && response.status < 300';
+      if (a.op === 'oneof') return 'response.status in ' + celList(a.exp);
+      return 'response.status == ' + (a.exp || '200');
+    case 'header': {
+      const hk = 'response.headers[' + JSON.stringify(a.name || '') + ']';
+      if (a.op === 'exists') return 'has(response.headers[' + JSON.stringify(a.name || '') + '])';
+      if (a.op === 'contains') return hk + '.contains(' + celVal(a.exp) + ')';
+      return hk + ' == ' + celVal(a.exp);
+    }
+    case 'json': {
+      const acc = pathToCEL(a.path);
+      if (a.op === 'exists') return 'has(' + acc + ')';
+      if (a.op === 'gt') return acc + ' > ' + celVal(a.exp);
+      if (a.op === 'lengthGt') return 'size(' + acc + ') > ' + celVal(a.exp);
+      return acc + ' == ' + celVal(a.exp);
+    }
+    case 'text':
+      return (a.op === 'notcontains' ? '!' : '') + 'response.text.contains(' + celVal(a.exp) + ')';
+    case 'timing':
+      return 'response.time < ' + (a.exp || '2000');
+    case 'forall':
+      return pathToCEL(a.path) + '.all(i, i.' + (a.field || 'value') + ' ' + (a.sub || '>') + ' ' + celVal(a.exp) + ')';
+    case 'exists':
+      return pathToCEL(a.path) + '.exists(i, i.' + (a.field || 'value') + ' ' + (a.sub || '==') + ' ' + celVal(a.exp) + ')';
+    case 'count':
+      return 'size(' + pathToCEL(a.path) + ') ' + (a.op || '==') + ' ' + (a.exp || '0');
+    case 'script': return null;
+  }
+  return '';
+}
+function assertionsToCEL(t) {
+  const preds = t.assertions.filter(a => a.type !== 'script').map(toCEL).filter(Boolean);
+  return preds.length ? preds.join(' &&\n') : '// no compilable assertions';
+}
+function toScriptLine(a) {
+  const E = x => 'relay.expect(' + x + ')';
+  switch (a.type) {
+    case 'status':
+      if (a.op === 'is2xx') return E('response.status') + '.toBeLevel2xx();';
+      if (a.op === 'oneof') return E('response.status') + '.toBeOneOf(' + celList(a.exp) + ');';
+      return E('response.status') + '.toEqual(' + (a.exp || '200') + ');';
+    case 'header': {
+      const hk = 'response.headers[' + JSON.stringify(a.name || '') + ']';
+      if (a.op === 'exists') return E(hk) + '.toBeDefined();';
+      if (a.op === 'contains') return E(hk) + '.toContain(' + celVal(a.exp) + ');';
+      return E(hk) + '.toEqual(' + celVal(a.exp) + ');';
+    }
+    case 'json': {
+      const acc = pathToCEL(a.path);
+      if (a.op === 'exists') return E(acc) + '.toBeDefined();';
+      if (a.op === 'gt') return E(acc) + '.toBeGreaterThan(' + celVal(a.exp) + ');';
+      if (a.op === 'lengthGt') return E(acc + '.length') + '.toBeGreaterThan(' + celVal(a.exp) + ');';
+      return E(acc) + '.toEqual(' + celVal(a.exp) + ');';
+    }
+    case 'text':
+      return E('response.text') + (a.op === 'notcontains' ? '.not' : '') + '.toContain(' + celVal(a.exp) + ');';
+    case 'timing':
+      return E('response.time') + '.toBeLessThan(' + (a.exp || '2000') + ');';
+    case 'forall':
+      return E(pathToCEL(a.path) + '.every(i => i.' + (a.field || 'value') + ' ' + (a.sub || '>') + ' ' + celVal(a.exp) + ')') + '.toBe(true);';
+    case 'exists':
+      return E(pathToCEL(a.path) + '.some(i => i.' + (a.field || 'value') + ' ' + (a.sub || '==') + ' ' + celVal(a.exp) + ')') + '.toBe(true);';
+    case 'count':
+      return E(pathToCEL(a.path) + '.length') + '.toBe' + (a.op === '>' ? 'GreaterThan' : a.op === '<' ? 'LessThan' : '') + '(' + (a.exp || '0') + ');';
+  }
+  return '';
+}
+function assertionsToScript(t) {
+  const lines = t.assertions.filter(a => a.type !== 'script' && a.type).map(a => '  ' + toScriptLine(a));
+  const custom = t.assertions.filter(a => a.type === 'script' && a.code)
+    .map(a => '  ' + a.code.trim().split('\n').join('\n  '));
+  return 'relay.test(' + JSON.stringify(t.name) + ', () => {\n' +
+    lines.join('\n') + (custom.length ? '\n  // — advanced (escape hatch) —\n' + custom.join('\n') : '') +
+    '\n});';
+}
+// CEL syntax highlighter
+function hlCEL(s) {
+  s = escHtml(s);
+  s = s.replace(/(^|\n)(\s*\/\/[^\n]*)/g, '$1<span class="tok-kw">$2</span>');
+  s = s.replace(/\b(response|request|i)\b(?=\.|\b)/g, '<span class="tok-obj">$1</span>');
+  s = s.replace(/\b(all|exists|exists_one|filter|map|has|size|in)\b/g, '<span class="tok-mac">$1</span>');
+  s = s.replace(/&quot;([^&]*?)&quot;/g, '<span class="tok-str">&quot;$1&quot;</span>');
+  s = s.replace(/\b(\d+(?:\.\d+)?)\b/g, '<span class="tok-num">$1</span>');
+  return s;
+}
+
+/* ---------------- filter + tree state ---------------- */
+const FILTERS = [
+  { id:'failed',  label:'Failed last run', test: t => t.run && t.run.status === 'fail' },
+  { id:'noxray',  label:'No Xray link',    test: t => !t.xray },
+  { id:'asserts', label:'Has assertions',  test: t => t.assertions.length > 0 },
+  { id:'tagged',  label:'Tagged',          test: t => t.tags.length > 0 },
+  { id:'reqs',    label:'Requirement',     test: t => t.reqs.length > 0 },
+];
+const activeFilters = new Set();
+let searchTerm = '';
+let selectedId = 'relay-verify-individual';
+let runScope = 'selected';
+let tagExpr = '';
+let pushPreviewed = false;
+let pushExec = { mode: 'new', key: 'AML-E2031' };
+
+function visibleTests() {
+  return SUITE.tests.filter(t => {
+    if (searchTerm && !(t.name.toLowerCase().includes(searchTerm) ||
+        t.path.toLowerCase().includes(searchTerm) ||
+        (t.xray && t.xray.toLowerCase().includes(searchTerm)))) return false;
+    for (const f of activeFilters) {
+      const def = FILTERS.find(x => x.id === f);
+      if (def && !def.test(t)) return false;
+    }
+    return true;
+  });
+}
+const getTest = id => SUITE.tests.find(t => t.id === id);
+
+/* ---------------- render: filter chips ---------------- */
+function renderFilters() {
+  const box = $('filterChips'); box.innerHTML = '';
+  for (const f of FILTERS) {
+    const count = SUITE.tests.filter(f.test).length;
+    const on = activeFilters.has(f.id);
+    box.append(h('button', {
+      class: 'fchip' + (on ? ' on' : ''),
+      'aria-pressed': on ? 'true' : 'false',
+      onclick: () => { on ? activeFilters.delete(f.id) : activeFilters.add(f.id); renderFilters(); renderTree(); },
+    }, f.label, h('span', { class:'c' }, String(count))));
+  }
+}
+
+/* ---------------- render: suite tree ---------------- */
+function renderTree() {
+  const list = $('sideList'); list.innerHTML = '';
+  const tests = visibleTests();
+  // Collection row
+  list.append(h('div', { class:'colRow', role:'treeitem' },
+    h('span', { class:'car' }, '▾'),
+    h('span', { class:'method m-POST' }, ''),
+    'AML',
+    h('button', { class:'runBtn', title:'Run collection', 'aria-label':'Run AML collection',
+      onclick: (e)=>{ e.stopPropagation(); runScope='collection'; renderMeta(); doRun(); } }, '▷')
+  ));
+  // Folder row
+  list.append(h('div', { class:'folderRow', role:'treeitem' },
+    h('span', { class:'car' }, '▾'), '📁', 'verify',
+    h('span', { style:'margin-left:auto;font-family:var(--mono);font-size:9.5px;color:var(--faint)' }, tests.length + '')
+  ));
+  if (!tests.length) {
+    list.append(h('div', { class:'empty', style:'padding:24px 12px' }, 'No tests match',
+      h('div', { class:'sub' }, 'Clear filters to see all')));
+    return;
+  }
+  for (const t of tests) {
+    const last = t.run ? (t.run.status === 'fail' ? 'fail' : 'pass') : 'never';
+    const xrayInd = t.xray
+      ? h('span', { class:'xrayTag', title:'Linked to '+t.xray }, t.xray)
+      : h('span', { class:'unlinkedDot', title:'No Xray link' });
+    list.append(h('div', {
+      class: 'reqRow' + (t.id === selectedId ? ' on' : ''),
+      role:'treeitem', 'aria-selected': t.id === selectedId ? 'true':'false', tabindex:'0',
+      onclick: () => select(t.id),
+      onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(t.id); } },
+      title: t.method + ' ' + SUITE.baseUrl + t.path,
+    },
+      h('span', { class:'lastDot ' + last, title: t.run ? ('Last run: '+t.run.status) : 'Never run' }),
+      h('span', { class:'method m-' + t.method }, t.method),
+      h('span', { class:'nm', style: t.enabled ? '' : 'opacity:.5;text-decoration:line-through' }, t.name),
+      xrayInd,
+    ));
+  }
+}
+
+function select(id) { selectedId = id; pushPreviewed = false; renderTree(); renderMain(); renderMeta(); }
+
+/* ---------------- operator labels ---------------- */
+const OPS = {
+  status: { equals:'equals', is2xx:'is 2xx', oneof:'is one of' },
+  header: { equals:'equals', contains:'contains', exists:'exists' },
+  json:   { equals:'equals', gt:'>', lengthGt:'length >', exists:'exists' },
+  text:   { contains:'contains', notcontains:'does not contain' },
+  timing: { '<':'<' },
+  count:  { '==':'equals', '>':'>', '<':'<' },
+};
+const SUBOPS = { '>':'>', '<':'<', '>=':'≥', '<=':'≤', '==':'equals', '!=':'≠' };
+const TYPE_LABEL = { status:'Status', header:'Header', json:'JSON body', text:'Text body', timing:'Timing',
+  forall:'For all', exists:'Any', count:'Count', script:'Script' };
+let asrtView = 'visual';
+
+/* ---------------- render: main editor ---------------- */
+function renderMain() {
+  const t = getTest(selectedId);
+  $('crumb').innerHTML = '';
+  $('crumb').append(
+    document.createTextNode('AML'), h('span', { class:'sep' }, '/'),
+    document.createTextNode('verify'), h('span', { class:'sep' }, '/'),
+    h('b', {}, t.name));
+  $('sbInfo').textContent = t.src;
+
+  const work = $('work'); work.innerHTML = '';
+  work.append(identityCard(t), assertionCard(t), traceCard(t), lastRunCard(t));
+}
+
+/* --- card 1: identity --- */
+function identityCard(t) {
+  const nameInput = h('input', { id:'testName', type:'text', value:t.name, 'aria-label':'Test name',
+    onchange: (e)=>{ t.name = e.target.value.trim() || t.name; renderTree(); renderMain(); } });
+  const toggle = h('button', { class:'toggle' + (t.enabled?' on':''), role:'switch',
+    'aria-checked': t.enabled?'true':'false', 'aria-label':'Test enabled',
+    onclick: ()=>{ t.enabled = !t.enabled; renderTree(); renderMain(); } });
+
+  return h('div', { class:'card', 'aria-label':'Test identity' },
+    h('div', { class:'secHd' }, 'Test Identity', h('span', { class:'grow' }),
+      h('span', { class:'lbl', style:'font-weight:600;text-transform:none;letter-spacing:0' }, 'Enabled'), toggle),
+    h('div', { class:'secBody' },
+      h('div', { class:'idTop' },
+        h('span', { class:'method m-' + t.method, style:'font-size:11px' }, t.method),
+        nameInput),
+      h('div', { class:'idGrid' },
+        h('span', { class:'k' }, 'Relay ID'),
+        h('span', { class:'ro' }, t.id),
+        h('span', { class:'k' }, 'Endpoint'),
+        h('span', { class:'ro', style:'color:var(--dim)', html: hlVars(SUITE.baseUrl + t.path) }),
+        h('span', { class:'k' }, 'Source'),
+        h('span', { class:'srcPill', title:'Source of truth — this test is defined in version control (Git), not a hidden cloud document' },
+          h('span', { class:'pathtxt' }, t.src), h('span', { class:'sot' }, '⎇ git')),
+        h('span', { class:'k' }, 'Tags'),
+        tagWrap(t),
+        h('span', { class:'k' }, 'Owner'),
+        h('span', { class:'idInline' },
+          h('span', { class:'mono', style:'font-size:12px' }, t.owner),
+          h('span', { style:'color:var(--faint)' }, '·'),
+          h('span', { class:'k', style:'letter-spacing:0' }, 'Priority'),
+          prioSelect(t)),
+      ),
+    ));
+}
+function tagWrap(t) {
+  const wrap = h('div', { class:'tagWrap' });
+  for (const tag of t.tags) {
+    wrap.append(h('span', { class:'tagChip' }, tag,
+      h('button', { 'aria-label':'Remove tag '+tag, onclick:()=>{ t.tags = t.tags.filter(x=>x!==tag); renderTree(); renderMain(); } }, '×')));
+  }
+  wrap.append(h('button', { class:'addTag', onclick:()=>{
+    const v = prompt('Add tag (smoke, regression, contract, negative…)');
+    if (v && v.trim()) { t.tags.push(v.trim().toLowerCase()); renderTree(); renderMain(); }
+  } }, '+ tag'));
+  return wrap;
+}
+function prioSelect(t) {
+  const sel = h('select', { 'aria-label':'Priority', onchange:(e)=>{ t.priority = e.target.value; renderMain(); } });
+  for (const p of ['low','med','high']) {
+    const o = h('option', { value:p }, p === 'med' ? 'Medium' : p[0].toUpperCase()+p.slice(1));
+    if (p === t.priority) o.selected = true; sel.append(o);
+  }
+  const badge = h('span', { class:'prio ' + t.priority }, t.priority.toUpperCase());
+  return h('span', { class:'idInline' }, sel, badge);
+}
+
+/* --- card 2: assertion builder --- */
+function assertionCard(t) {
+  const switcher = h('div', { class:'viewSeg', role:'tablist', 'aria-label':'Assertion view' },
+    ...[['visual','Visual'],['cel','CEL'],['script','Script']].map(([v,l]) =>
+      h('button', { class: asrtView===v?'on':'', role:'tab', 'aria-selected': asrtView===v?'true':'false',
+        onclick:()=>{ asrtView=v; renderMain(); } }, l)));
+  const head = h('div', { class:'secHd' }, 'Assertions', h('span', { class:'n' }, String(t.assertions.length)),
+      h('span', { class:'grow' }),
+      h('button', { class:'fromRespBtn', onclick:()=>openAssertFromResponse(t),
+        title:'Build assertions by clicking values in the last response' }, '⊕ From response'),
+      switcher);
+
+  if (asrtView === 'cel') {
+    return h('div', { class:'card', 'aria-label':'Assertions — CEL' }, head,
+      h('div', { class:'compiledHd' }, h('span', { class:'lang' }, 'CEL'),
+        h('span', { class:'note' }, 'cel-go predicate · type-checked, side-effect-free · stored in diffable YAML')),
+      h('div', { class:'celPre', html: hlCEL(assertionsToCEL(t)) }),
+      h('div', { class:'fhint', style:'margin:-6px 14px 14px' },
+        'Generated from the visual rows. Edit rows to regenerate — or use the Script tab for total complexity.'));
+  }
+  if (asrtView === 'script') {
+    return h('div', { class:'card', 'aria-label':'Assertions — script' }, head,
+      h('div', { class:'compiledHd' }, h('span', { class:'lang' }, 'JS'),
+        h('span', { class:'note' }, 'goja / Sobek runtime · minimal relay.* API · Postman pm.* import-compatible')),
+      h('textarea', { class:'celEd', spellcheck:'false', 'aria-label':'Assertion script',
+        oninput:(e)=>{ t._script = e.target.value; } }, t._script || assertionsToScript(t)),
+      h('div', { class:'fhint', style:'margin:-6px 14px 14px' },
+        'Escape hatch for logic the visual builder can’t express. Runs sandboxed with an interrupt timeout.'));
+  }
+
+  // visual
+  const tbody = h('tbody');
+  t.assertions.forEach((a, i) => {
+    if (a.type === 'script') { tbody.append(scriptAssertRow(t, a, i)); return; }
+    tbody.append(assertRow(t, a, i));
+  });
+  return h('div', { class:'card', 'aria-label':'Assertion builder' }, head,
+    h('table', { class:'asrt' },
+      h('thead', {}, h('tr', {},
+        h('th', { style:'width:88px' }, 'Type'),
+        h('th', {}, 'Condition'),
+        h('th', { style:'width:1%' }, 'Last run'),
+        h('th', { style:'width:1%' }, ''))),
+      tbody),
+    h('button', { class:'addRow', onclick:()=>addAssertion(t) }, '+ Add assertion'));
+}
+function resChip(res) {
+  if (res === 'ok') return h('span', { class:'chip ok' }, 'pass');
+  if (res === 'bad') return h('span', { class:'chip bad' }, 'fail');
+  return h('span', { class:'chip neutral' }, 'not run');
+}
+function opSelect(a, t) {
+  const sel = h('select', { 'aria-label':'Operator', onchange:(e)=>{ a.op = e.target.value; renderMain(); } });
+  for (const [val, lbl] of Object.entries(OPS[a.type] || {})) {
+    const o = h('option', { value:val }, lbl); if (val === a.op) o.selected = true; sel.append(o);
+  }
+  return sel;
+}
+function txt(val, cls, ph, onIn) {
+  return h('input', { type:'text', class:cls, value:val||'', placeholder:ph||'',
+    oninput: onIn || (()=>{}) });
+}
+function subOpSelect(a) {
+  const sel = h('select', { 'aria-label':'Item operator', onchange:(e)=>{ a.sub = e.target.value; renderMain(); } });
+  for (const [val, lbl] of Object.entries(SUBOPS)) {
+    const o = h('option', { value:val }, lbl); if (val === (a.sub||'>')) o.selected = true; sel.append(o);
+  }
+  return sel;
+}
+function assertRow(t, a, i) {
+  let fields;
+  if (a.type === 'status') {
+    fields = h('div', { class:'asrtFields' }, opSelect(a),
+      a.op === 'exists' ? null : txt(a.exp, 'exp', a.op==='oneof'?'200, 404':'200', e=>{a.exp=e.target.value; refreshCEL(i);}));
+  } else if (a.type === 'header') {
+    fields = h('div', { class:'asrtFields' },
+      txt(a.name, 'path', 'Header-Name', e=>{a.name=e.target.value; refreshCEL(i);}), opSelect(a),
+      a.op === 'exists' ? null : txt(a.exp, 'exp', 'value', e=>{a.exp=e.target.value; refreshCEL(i);}));
+  } else if (a.type === 'json') {
+    fields = h('div', { class:'asrtFields' },
+      txt(a.path, 'path', '$.result.status', e=>{a.path=e.target.value; refreshCEL(i);}), opSelect(a),
+      a.op === 'exists' ? null : txt(a.exp, 'exp', 'expected', e=>{a.exp=e.target.value; refreshCEL(i);}));
+  } else if (a.type === 'text') {
+    fields = h('div', { class:'asrtFields' }, opSelect(a), txt(a.exp, 'exp', 'text', e=>{a.exp=e.target.value; refreshCEL(i);}));
+  } else if (a.type === 'timing') {
+    fields = h('div', { class:'asrtFields' },
+      h('span', { class:'mono', style:'font-size:11px;color:var(--dim)' }, 'total'), opSelect(a),
+      txt(a.exp, 'exp', '2000', e=>{a.exp=e.target.value; refreshCEL(i);}), h('span', { class:'unit' }, 'ms'));
+  } else if (a.type === 'forall' || a.type === 'exists') {
+    fields = h('div', { class:'asrtFields' },
+      txt(a.path, 'path', '$.checks', e=>{a.path=e.target.value; refreshCEL(i);}),
+      h('span', { class:'mono', style:'font-size:11px;color:var(--faint)' }, a.type==='forall'?'∀ item .':'∃ item .'),
+      txt(a.field, 'exp', 'field', e=>{a.field=e.target.value; refreshCEL(i);}),
+      subOpSelect(a), txt(a.exp, 'exp', 'value', e=>{a.exp=e.target.value; refreshCEL(i);}));
+  } else if (a.type === 'count') {
+    fields = h('div', { class:'asrtFields' },
+      h('span', { class:'mono', style:'font-size:11px;color:var(--faint)' }, 'size('),
+      txt(a.path, 'path', '$.matches', e=>{a.path=e.target.value; refreshCEL(i);}),
+      h('span', { class:'mono', style:'font-size:11px;color:var(--faint)' }, ')'),
+      opSelect(a), txt(a.exp, 'exp', '0', e=>{a.exp=e.target.value; refreshCEL(i);}));
+  }
+  return h('tr', {},
+    h('td', {}, h('span', { class:'asrtType ' + a.type }, TYPE_LABEL[a.type])),
+    h('td', {}, fields, h('div', { class:'celLine', id:'cel-'+i, html: hlCEL(toCEL(a)||'') })),
+    h('td', { class:'asrtRes' }, resChip(a.res)),
+    h('td', { class:'asrtDel' }, h('button', { class:'delRow', 'aria-label':'Delete assertion',
+      onclick:()=>{ t.assertions.splice(i,1); renderMain(); } }, '×')));
+}
+function refreshCEL(i) {
+  const t = getTest(selectedId); const el = $('cel-'+i);
+  if (el && t && t.assertions[i]) el.innerHTML = hlCEL(toCEL(t.assertions[i]) || '');
+}
+function scriptAssertRow(t, a, i) {
+  return h('tr', { class:'scriptRow' },
+    h('td', {}, h('span', { class:'asrtType script' }, 'Script')),
+    h('td', { colspan:'2' },
+      h('textarea', { class:'scriptEd', spellcheck:'false', 'aria-label':'Assertion script',
+        oninput:(e)=>a.code=e.target.value }, a.code || "pm.test('custom check', () => {\n  pm.expect(pm.response.json().score).to.be.below(0.8);\n});")),
+    h('td', { class:'asrtDel' }, h('button', { class:'delRow', 'aria-label':'Delete script assertion',
+      onclick:()=>{ t.assertions.splice(i,1); renderMain(); } }, '×')));
+}
+function addAssertion(t) {
+  const types = [['status','Status'],['header','Header'],['json','JSON body'],['text','Text body'],['timing','Timing'],
+    ['forall','For all (∀)'],['exists','Any (∃)'],['count','Count'],['script','Script']];
+  const menu = h('div', { style:'position:fixed;z-index:9999;background:var(--panel);border:1px solid var(--line2);border-radius:10px;padding:4px;min-width:170px;box-shadow:0 8px 24px rgba(0,0,0,.12)' });
+  const defaults = {
+    status:{type:'status',op:'equals',exp:'200',res:null},
+    header:{type:'header',name:'Content-Type',op:'contains',exp:'application/json',res:null},
+    json:{type:'json',path:'$.',op:'equals',exp:'',res:null},
+    text:{type:'text',op:'contains',exp:'',res:null},
+    timing:{type:'timing',metric:'total',op:'<',exp:'2000',res:null},
+    forall:{type:'forall',path:'$.checks',field:'passed',sub:'==',exp:'true',res:null},
+    exists:{type:'exists',path:'$.matches',field:'confidence',sub:'>',exp:'0.8',res:null},
+    count:{type:'count',path:'$.matches',op:'==',exp:'0',res:null},
+    script:{type:'script',code:'',res:null},
+  };
+  for (const [val,lbl] of types) {
+    menu.append(h('button', { class:'navItem', style:'color:var(--fg);padding:7px 12px',
+      onclick:()=>{ t.assertions.push({...defaults[val]}); if(menu.parentNode) document.body.removeChild(menu); renderMain(); } },
+      h('span', { class:'asrtType '+val, style:'margin-right:8px' }, TYPE_LABEL[val] || lbl)));
+  }
+  document.body.append(menu);
+  const btn = event.currentTarget.getBoundingClientRect();
+  menu.style.left = btn.left + 'px';
+  menu.style.top = (btn.top - menu.offsetHeight - 6) + 'px';
+  setTimeout(()=>document.addEventListener('click', function close(e){
+    if (!menu.contains(e.target)) { if (menu.parentNode) document.body.removeChild(menu); document.removeEventListener('click', close); }
+  }), 0);
+}
+
+/* --- clickable response tree → assertion authoring --- */
+function jsonType(v) {
+  if (v === null) return 'null';
+  if (Array.isArray(v)) return 'array';
+  return typeof v === 'object' ? 'object' : typeof v;
+}
+function valClass(v) {
+  const tp = jsonType(v);
+  return tp === 'string' ? 'str' : (tp === 'number' ? 'num' : (tp === 'boolean' ? 'bool' : 'null'));
+}
+function valText(v) { return jsonType(v) === 'string' ? JSON.stringify(v) : String(v); }
+
+function openAssertFromResponse(t) {
+  let added = 0;
+  openModal({
+    title:'Assert from response', wide:true,
+    subtitle: t.method + ' ' + SUITE.baseUrl + t.path + (t.run ? '  ·  ' + t.run.code + ' · ' + t.run.ms + 'ms' : '  ·  sample'),
+    build(body) {
+      body.append(h('div', { class:'fhint', style:'margin-bottom:10px', html:
+        'Click any value to add an equality assertion on its <span class="mono">$</span>JSONPath. Arrays offer <b>∀ for-all</b> and <b>count</b>. Each compiles to CEL.' }));
+      const tree = h('div', { class:'jtree', role:'tree' });
+      renderJsonNode(tree, sampleFor(t), '$', 0, t, () => { added++; const c = $('__addedCount'); if (c) c.textContent = added + ' added'; });
+      body.append(tree);
+    },
+    actions(foot) {
+      foot.append(h('span', { id:'__addedCount', style:'font-size:12px;color:var(--green);font-weight:600' }, ''),
+        h('span', { class:'grow' }),
+        h('button', { class:'btn dark', onclick:()=>{ closeModal(); if (added) toast('Added ' + added + ' assertion' + (added===1?'':'s')); } }, 'Done'));
+    },
+  });
+}
+function addFromTree(t, a, onAdd) {
+  t.assertions.push(a); onAdd();
+  // keep modal open; refresh the underlying editor live
+  const work = $('work'); const sc = work ? work.scrollTop : 0;
+  renderMain(); if (work) work.scrollTop = sc;
+}
+function renderJsonNode(parent, val, path, depth, t, onAdd) {
+  const pad = (depth * 16 + 2) + 'px';
+  const tp = jsonType(val);
+  if (tp === 'object' || tp === 'array') {
+    const entries = tp === 'array' ? val.map((v, i) => [i, v]) : Object.entries(val);
+    const isArr = tp === 'array';
+    const headRow = h('div', { class:'jrow', style:'padding-left:'+pad },
+      path === '$'
+        ? h('span', { class:'jkey' }, '$')
+        : h('span', { class:'jkey' }, lastSeg(path)),
+      h('span', { class:'jpunct' }, isArr ? '[' : '{'),
+      h('span', { class:'jcount' }, entries.length + (isArr ? ' item'+(entries.length===1?'':'s') : ' key'+(entries.length===1?'':'s'))));
+    if (isArr) {
+      headRow.append(
+        h('button', { class:'jtool', title:'Assert every item: '+path+'.all(i, …)',
+          onclick:()=>{ const field = guessField(val); addFromTree(t,
+            { type:'forall', path, field, sub:'==', exp: field==='passed'?'true':'', res:null }, onAdd); } }, '∀ for-all'),
+        h('button', { class:'jtool', title:'Assert item count',
+          onclick:()=>addFromTree(t, { type:'count', path, op:'==', exp:String(entries.length), res:null }, onAdd) }, 'count'),
+        h('button', { class:'jtool', title:'Assert non-empty',
+          onclick:()=>addFromTree(t, { type:'count', path, op:'>', exp:'0', res:null }, onAdd) }, 'non-empty'));
+    }
+    parent.append(headRow);
+    for (const [k, v] of entries) {
+      const childPath = isArr ? path + '[' + k + ']' : path + '.' + k;
+      renderJsonNode(parent, v, childPath, depth + 1, t, onAdd);
+    }
+    parent.append(h('div', { class:'jrow', style:'padding-left:'+pad },
+      h('span', { class:'jpunct' }, isArr ? ']' : '}')));
+  } else {
+    const row = h('div', { class:'jrow', style:'padding-left:'+pad },
+      h('span', { class:'jkey' }, lastSeg(path)), h('span', { class:'jpunct' }, ':'),
+      h('span', { class:'jval ' + valClass(val), role:'button', tabindex:'0',
+        title:'Add assertion: ' + pathToCEL(path) + ' == ' + celVal(valText(val).replace(/^"|"$/g,'')),
+        onclick:()=>addFromTree(t, { type:'json', path, op:'equals',
+          exp: tp === 'string' ? val : String(val), res:null }, onAdd),
+        onkeydown:(e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); e.currentTarget.click(); } },
+      }, valText(val)));
+    if (tp === 'number') row.append(
+      h('button', { class:'jtool', title:'Assert greater-than',
+        onclick:()=>addFromTree(t, { type:'json', path, op:'gt', exp:String(val), res:null }, onAdd) }, '>'));
+    parent.append(row);
+  }
+}
+function lastSeg(p) { const m = String(p).match(/(?:\.([\w$]+)|\[(\d+)\])$/); return m ? (m[1] || ('['+m[2]+']')) : p; }
+function guessField(arr) {
+  const o = arr.find(x => x && typeof x === 'object');
+  if (!o) return 'value';
+  if ('passed' in o) return 'passed';
+  if ('confidence' in o) return 'confidence';
+  return Object.keys(o)[0] || 'value';
+}
+
+/* --- card 3: traceability --- */
+function traceCard(t) {
+  const linked = !!t.xray;
+  const keyInput = h('input', { id:'xrayKey', type:'text', class:'keyInput mono', value:t.xray,
+    placeholder:'AML-T###', 'aria-label':'Xray test key', oninput:()=>{ const m=$('linkMsg'); if(m) m.remove(); } });
+
+  // requirement chips
+  const reqBox = h('div', { class:'tagWrap' });
+  if (t.reqs.length) for (const r of t.reqs) {
+    reqBox.append(h('span', { class:'reqChip' }, r,
+      h('button', { 'aria-label':'Unlink '+r, onclick:()=>{ t.reqs = t.reqs.filter(x=>x!==r); renderMain(); } }, '×')));
+  } else reqBox.append(h('span', { class:'inherited' }, 'none'));
+
+  const actions = h('div', { class:'traceActions' },
+    h('button', { class:'btn sm', onclick:()=>linkExisting(t) }, 'Link existing test'),
+    h('button', { class:'btn sm', onclick:()=>openCreateIssue(t) }, 'Create Xray issue…'),
+    h('button', { class:'btn sm', onclick:()=>linkReqs(t) }, 'Link requirements'),
+    h('button', { class:'btn sm', onclick:()=>{ toast('Synced metadata for '+(t.xray||t.name)); } }, 'Sync metadata'),
+    h('span', { id:'linkSlot' }),
+  );
+
+  return h('div', { class:'card', 'aria-label':'Xray and Jira traceability' },
+    h('div', { class:'secHd' }, 'Xray / Jira Traceability', h('span', { class:'grow' }),
+      linked ? h('span', { class:'badge pass' }, 'LINKED') : h('span', { class:'badge', style:'background:#fdf3e6;color:var(--amber);border:1px solid #f0d9b8' }, 'UNLINKED')),
+    h('div', { class:'secBody' },
+      h('div', { class:'traceGrid' },
+        h('span', { class:'k' }, 'Xray project'),
+        h('span', { class:'inherited' }, SUITE.project + '  ', h('span', { style:'font-size:10px;color:var(--faint)' }, '(inherited)')),
+        h('span', { class:'k' }, 'Xray test key'),
+        h('span', { class:'idInline' }, keyInput),
+        h('span', { class:'k' }, 'Requirements'),
+        reqBox,
+        h('span', { class:'k' }, 'Test plan'),
+        h('span', { class:'idInline' },
+          h('input', { type:'text', class:'keyInput mono', value:t.plan, placeholder:XRAY_CFG.plan+' (inherited)',
+            'aria-label':'Test plan key', onchange:(e)=>t.plan=e.target.value.trim() }),
+          !t.plan ? h('span', { style:'font-size:10px;color:var(--faint)' }, 'inherits '+XRAY_CFG.plan) : h('span', { class:'badge', style:'background:var(--ink-soft);color:var(--ink)' }, 'OVERRIDE')),
+        h('span', { class:'k' }, 'Test set'),
+        h('span', { class:'idInline' },
+          h('input', { type:'text', class:'keyInput mono', value:t.set||'', placeholder:XRAY_CFG.testSet+' (inherited)',
+            'aria-label':'Test set key', onchange:(e)=>t.set=e.target.value.trim() }),
+          !t.set ? h('span', { style:'font-size:10px;color:var(--faint)' }, 'inherits '+XRAY_CFG.testSet) : h('span', { class:'badge', style:'background:var(--ink-soft);color:var(--ink)' }, 'OVERRIDE')),
+      ),
+      actions,
+      coverageStrip(t),
+    ));
+}
+function coverageStrip(t) {
+  const linked = !!t.xray;
+  const ran = !!t.run;
+  const reqNode = t.reqs.length
+    ? h('div', { class:'covNode good' },
+        h('span', { class:'lbl' }, 'Requirement'),
+        h('span', { class:'val' }, t.reqs[0]),
+        arrowNode())
+    : h('div', { class:'covNode gap' },
+        h('span', { class:'lbl' }, 'Requirement'),
+        h('span', { class:'val' }, 'no link'),
+        arrowNode());
+  const testNode = linked
+    ? h('div', { class:'covNode good' },
+        h('span', { class:'lbl' }, 'Xray Test'),
+        h('span', { class:'val' }, t.xray),
+        arrowNode())
+    : h('div', { class:'covNode gap' },
+        h('span', { class:'lbl' }, 'Xray Test'),
+        h('span', { class:'val' }, 'unlinked — create or link'),
+        arrowNode());
+  let runNode;
+  if (!ran) runNode = h('div', { class:'covNode' },
+      h('span', { class:'lbl' }, 'Last Run'),
+      h('span', { class:'val', style:'color:var(--faint)' }, 'no runs yet'));
+  else if (t.run.status === 'fail') runNode = h('div', { class:'covNode bad' },
+      h('span', { class:'lbl' }, 'Last Run'),
+      h('span', { class:'val' }, '✕ failed'));
+  else runNode = h('div', { class:'covNode good' },
+      h('span', { class:'lbl' }, 'Last Run'),
+      h('span', { class:'val' }, '✓ passed'));
+  return h('div', { class:'covStrip', 'aria-label':'Requirement coverage' }, reqNode, testNode, runNode);
+}
+function arrowNode() { return h('span', { class:'arrow' }, '→'); }
+
+function linkExisting(t) {
+  const slot = $('linkSlot'); slot.innerHTML = '';
+  const key = ($('xrayKey').value || '').trim().toUpperCase();
+  if (!key) { slot.append(h('span', { class:'valMsg bad' }, '⚠ enter a key first')); return; }
+  if (XRAY_EXISTING.has(key)) {
+    t.xray = key; slot.append(h('span', { class:'valMsg ok' }, '✓ ' + key + ' found & linked'));
+    toast('Linked to ' + key);
+    setTimeout(()=>{ renderTree(); renderMain(); }, 700);
+  } else {
+    slot.append(h('span', { class:'valMsg bad' }, '✕ ' + key + ' not found in ' + SUITE.project));
+  }
+}
+function createXray(t) {
+  if (t.xray) { toast('Already linked to ' + t.xray, true); return; }
+  const key = 'AML-T' + (200 + Math.floor(Math.random()*90));
+  XRAY_EXISTING.add(key); t.xray = key;
+  $('linkSlot').innerHTML = '';
+  $('linkSlot').append(h('span', { class:'valMsg ok' }, '✓ created ' + key + ' from ' + t.assertions.length + ' assertions'));
+  toast('Created Xray test ' + key);
+  setTimeout(()=>{ renderTree(); renderMain(); }, 800);
+}
+function linkReqs(t) {
+  const v = prompt('Link requirement / story keys (comma separated)', 'AML-88');
+  if (!v) return;
+  v.split(',').map(s=>s.trim().toUpperCase()).filter(Boolean).forEach(r=>{ if(!t.reqs.includes(r)) t.reqs.push(r); });
+  renderTree(); renderMain();
+}
+
+/* --- card 4: last run --- */
+function lastRunCard(t) {
+  if (!t.run) {
+    return h('div', { class:'card', 'aria-label':'Last run result' },
+      h('div', { class:'secHd' }, 'Last Run Result'),
+      h('div', { class:'empty' }, 'No runs yet',
+        h('div', { class:'sub' }, 'Run this test to record assertion results')));
+  }
+  const r = t.run;
+  const rows = [];
+  t.assertions.forEach(a => {
+    const ok = a.res === 'ok';
+    rows.push(h('div', { class:'runRow' },
+      h('span', { class:'ic ' + (ok?'ok':'bad') }, ok?'✓':'✕'),
+      h('span', { class:'rdesc' }, h('span', { class:'mono', html: hlDesc(a.desc) })),
+      h('span', { class:'rt' }, ok?'':'assert')));
+    if (!ok && a.err) rows.push(h('div', { class:'runErr' },
+      h('span', { class:'lbl' }, 'DIAGNOSTIC'), a.err));
+  });
+  const failing = t.assertions.filter(a=>a.res==='bad').length;
+  return h('div', { class:'card', 'aria-label':'Last run result' },
+    h('div', { class:'secHd' }, 'Last Run Result', h('span', { class:'grow' }),
+      h('span', { style:'font-weight:600;text-transform:none;letter-spacing:0;color:var(--faint);font-family:var(--mono)' }, r.at)),
+    h('div', { class:'runMeta' },
+      r.status === 'fail'
+        ? h('span', { class:'pill bad' }, h('span', { class:'dot' }), 'FAILED')
+        : h('span', { class:'pill ok' }, h('span', { class:'dot' }), 'PASSED'),
+      h('span', {}, h('span', { class:'lbl' }, 'HTTP '), r.code),
+      h('span', {}, h('span', { class:'lbl' }, 'DURATION '), r.ms + 'ms'),
+      h('span', {}, h('span', { class:'lbl' }, 'ENV '), r.env),
+      h('span', { style:'margin-left:auto' }, failing
+        ? h('span', { class:'badge fail' }, failing + ' FAILED')
+        : h('span', { class:'badge pass' }, 'ALL PASS'))),
+    ...rows);
+}
+
+/* ---------------- meta rail: run & push ---------------- */
+function scopeCount() {
+  const t = getTest(selectedId);
+  let base;
+  if (runScope === 'selected') base = [t];
+  else if (runScope === 'folder') base = SUITE.tests.filter(x=>x.enabled);
+  else base = SUITE.tests.filter(x=>x.enabled);
+  // tag expression: tag=regression,!flaky
+  if (tagExpr.trim()) {
+    const terms = tagExpr.replace(/^tag=/,'').split(',').map(s=>s.trim()).filter(Boolean);
+    base = base.filter(x => terms.every(term => {
+      if (term.startsWith('!')) return !x.tags.includes(term.slice(1));
+      return x.tags.includes(term);
+    }));
+  }
+  return base;
+}
+function renderMeta() {
+  const t = getTest(selectedId);
+  const meta = $('meta'); meta.innerHTML = '';
+  meta.append(h('h3', {}, 'Run & Push'));
+
+  // environment
+  const env = h('select', { id:'envSel', 'aria-label':'Environment' },
+    h('option', {}, 'Staging'), h('option', {}, 'Production'), h('option', {}, 'Local'), h('option', {}, 'No environment'));
+  meta.append(h('div', { class:'metaCard' },
+    h('span', { class:'lbl' }, 'Environment'), env));
+
+  // run scope
+  const scopeChips = h('div', { class:'chips' });
+  for (const [val,lbl] of [['selected','Selected'],['folder','Folder'],['collection','Collection']]) {
+    scopeChips.append(h('button', { class:'att' + (runScope===val?' on':''), 'aria-pressed':runScope===val?'true':'false',
+      onclick:()=>{ runScope=val; renderMeta(); } }, lbl));
+  }
+  const willN = scopeCount().length;
+  meta.append(h('div', { class:'metaCard' },
+    h('span', { class:'lbl' }, 'Run scope'),
+    scopeChips,
+    h('input', { class:'tagExpr', type:'text', value:tagExpr, placeholder:'tag=regression,!flaky',
+      'aria-label':'Tag expression', oninput:(e)=>{ tagExpr=e.target.value; const w=$('willRun'); if(w) w.innerHTML='will run <b>'+scopeCount().length+'</b> test'+(scopeCount().length===1?'':'s'); } }),
+    h('div', { class:'willRun', id:'willRun', html:'will run <b>'+willN+'</b> test'+(willN===1?'':'s') }),
+    h('button', { class:'btn dark full', id:'runBtn', style:'margin-top:10px', onclick:doRun }, '▷ Run')));
+
+  // push to xray
+  const pushCard = h('div', { class:'metaCard' },
+    h('span', { class:'lbl', style:'display:flex;align-items:center;gap:8px' }, 'Push to Xray',
+      h('button', { class:'cfgLink', style:'margin-left:auto', onclick:openXrayConfig, title:'Configure Jira / Xray connection' }, '⚙ configure')));
+  pushCard.append(h('div', { id:'pushBody' }));
+  meta.append(pushCard);
+  renderPushBody(t);
+
+  // export
+  meta.append(h('div', { class:'metaCard' },
+    h('span', { class:'lbl' }, 'Export results'),
+    h('div', { class:'exportRow' },
+      h('button', { class:'btn sm', onclick:()=>openExport('junit') }, 'JUnit XML'),
+      h('button', { class:'btn sm', onclick:()=>openExport('json') }, 'JSON'),
+      h('button', { class:'btn sm', onclick:()=>openExport('xray') }, 'Xray'))));
+}
+
+function renderPushBody(t, result) {
+  const body = $('pushBody'); body.innerHTML = '';
+  if (result) {
+    body.append(h('div', { style:'margin-bottom:6px' },
+      h('span', { class:'lbl', style:'margin-bottom:4px' }, 'Execution'),
+      h('span', { class:'execKey' }, result.exec)));
+    body.append(h('div', { style:'font-size:10.5px;color:var(--dim);margin-bottom:8px' },
+      'linked to plan ', h('span', { class:'mono', style:'color:var(--ink)' }, XRAY_CFG.plan),
+      ' · set ', h('span', { class:'mono', style:'color:var(--ink)' }, XRAY_CFG.testSet)));
+    for (const r of result.rows) {
+      const map = { pushed:['ok','✓','pushed'], created:['ok','✓','created + pushed'], skip:['neutral','–','skipped (no key)'] };
+      const [cls,ic,lbl] = map[r.status];
+      body.append(h('div', { class:'pushStat' },
+        h('span', { class:'ic '+(cls==='neutral'?'':cls), style:cls==='neutral'?'color:var(--faint)':'' }, ic),
+        h('span', { style:'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, r.name),
+        h('span', { class:'maptag '+(r.status==='skip'?'skip':r.status==='created'?'create':'link') }, lbl)));
+    }
+    body.append(h('button', { class:'btn sm full', style:'margin-top:8px', onclick:()=>{ pushPreviewed=false; renderPushBody(getTest(selectedId)); } }, 'Done'));
+    return;
+  }
+  if (!pushPreviewed) {
+    body.append(h('div', { style:'font-size:11px;color:var(--dim);margin-bottom:8px' },
+      'Preview the test → Xray key mapping before pushing.'),
+      h('button', { class:'btn sm full', onclick:()=>{ pushPreviewed=true; renderPushBody(getTest(selectedId)); } }, 'Preview mapping'));
+    return;
+  }
+  // dry-run mapping preview
+  const tests = scopeCount();
+  // execution target
+  const tgt = h('div', { style:'border:1px solid var(--line);border-radius:8px;padding:8px;margin-bottom:10px' });
+  tgt.append(h('div', { style:'font-size:10px;letter-spacing:.06em;color:var(--faint);text-transform:uppercase;font-weight:700;margin-bottom:6px' }, 'Execution target'));
+  tgt.append(segGroup([['new','New execution'],['existing','Existing']], pushExec.mode, (v)=>{ pushExec.mode=v; renderPushBody(getTest(selectedId)); }, true));
+  if (pushExec.mode === 'existing') tgt.append(h('input', { type:'text', class:'tagExpr', value:pushExec.key, placeholder:'AML-E####', 'aria-label':'Existing execution key', oninput:(e)=>pushExec.key=e.target.value.trim().toUpperCase() }));
+  tgt.append(h('div', { style:'font-size:10.5px;color:var(--dim);margin-top:7px' }, 'plan ', h('span',{class:'mono',style:'color:var(--ink)'},XRAY_CFG.plan), ' · set ', h('span',{class:'mono',style:'color:var(--ink)'},XRAY_CFG.testSet)));
+  body.append(tgt);
+  const mapping = tests.map(x => ({
+    name:x.name,
+    status: x.xray ? 'link' : (x.assertions.length ? 'create' : 'skip'),
+    key: x.xray || (x.assertions.length ? 'auto' : '—'),
+  }));
+  const counts = { link:0, create:0, skip:0 };
+  mapping.forEach(m=>counts[m.status]++);
+  body.append(h('div', { style:'font-size:10px;letter-spacing:.06em;color:var(--faint);text-transform:uppercase;font-weight:700;margin-bottom:6px' }, 'Dry-run mapping'));
+  for (const m of mapping) {
+    body.append(h('div', { class:'mapRow' },
+      h('span', { class:'nm', title:m.name }, m.name),
+      h('span', { class:'key' }, m.key),
+      h('span', { class:'maptag '+m.status }, m.status)));
+  }
+  body.append(h('div', { style:'font-size:10.5px;color:var(--dim);margin:8px 0' },
+    counts.link+' link · '+counts.create+' create · '+counts.skip+' skip'));
+  body.append(h('button', { class:'btn dark full', onclick:()=>doPush(mapping) }, 'Push execution'));
+}
+
+let running = false;
+function doRun() {
+  if (running) return; running = true;
+  const btn = $('runBtn'); const n = scopeCount().length;
+  if (btn) { btn.innerHTML=''; btn.append(h('span',{class:'spin'}),'Running '+n+'…'); btn.disabled = true; }
+  setTimeout(()=>{
+    running = false;
+    if (btn) { btn.innerHTML='▷ Run'; btn.disabled = false; }
+    // re-stamp run timestamps so "last run" reads fresh
+    scopeCount().forEach(x=>{ if(x.run) x.run.at = '2026-06-19 09:48'; });
+    toast('Ran '+n+' test'+(n===1?'':'s')+' · '+scopeCount().filter(x=>!x.run||x.run.status!=='fail').length+' passed');
+    renderTree(); renderMain();
+  }, 1300);
+}
+function doPush(mapping) {
+  const body = $('pushBody');
+  body.innerHTML=''; body.append(h('div',{class:'pushStat'},h('span',{class:'spin',style:'border-color:rgba(40,40,122,.25);border-top-color:var(--ink)'}),'Pushing to Xray…'));
+  setTimeout(()=>{
+    const exec = pushExec.mode === 'existing' && pushExec.key ? pushExec.key : 'AML-E' + (2000 + rid(900));
+    pushExec.key = exec;
+    const rows = mapping.map(m=>({ name:m.name, status: m.status==='skip'?'skip':(m.status==='create'?'created':'pushed') }));
+    renderPushBody(getTest(selectedId), { exec, rows });
+    $('sbXray').textContent = 'xray: pushed → ' + exec;
+    toast('Pushed execution ' + exec + ' → plan ' + XRAY_CFG.plan);
+  }, 1400);
+}
+
+/* ---------------- New Test creation ---------------- */
+function openNewTest() {
+  const draft = { name:'', method:'POST', path:'/aml/v2/', owner:'risk-platform', priority:'med',
+    tags:'', starter:true, linkXray:false, xrayKey:'' };
+  openModal({
+    title:'New test', subtitle:'Adds a Relay test under AML / verify',
+    build(body) {
+      body.append(frow('Test name',
+        h('input', { type:'text', placeholder:'Verify Individual', oninput:(e)=>draft.name=e.target.value }),
+        'Becomes the test id <span class="mono">relay-&lt;slug&gt;</span> and source file.'));
+      const methodSel = h('select', {}, ...['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS'].map(m=>{
+        const o=h('option',{value:m},m); if(m===draft.method)o.selected=true; return o; }));
+      methodSel.onchange = e=>draft.method=e.target.value;
+      body.append(h('div', { class:'frow two' },
+        frow('Method', methodSel),
+        frow('Collection / folder', h('select', {}, h('option',{},'AML / verify')))));
+      body.append(frow('Endpoint',
+        h('input', { type:'text', class:'mono', value:draft.path, oninput:(e)=>draft.path=e.target.value }),
+        'Prefixed with <span class="mono">{{baseUrl}}</span> at run time.'));
+      const prioSel = h('select', {}, ...[['low','Low'],['med','Medium'],['high','High']].map(([v,l])=>{
+        const o=h('option',{value:v},l); if(v===draft.priority)o.selected=true; return o; }));
+      prioSel.onchange = e=>draft.priority=e.target.value;
+      body.append(h('div', { class:'frow two' },
+        frow('Owner / component', h('input', { type:'text', class:'mono', value:draft.owner, oninput:(e)=>draft.owner=e.target.value })),
+        frow('Priority', prioSel)));
+      body.append(frow('Tags', h('input', { type:'text', class:'mono', placeholder:'smoke, regression', oninput:(e)=>draft.tags=e.target.value }),
+        'Comma separated.'));
+      body.append(h('label', { class:'ckbtn' },
+        h('input', { type:'checkbox', checked:draft.starter, onchange:(e)=>draft.starter=e.target.checked }),
+        'Seed starter assertions (status is 2xx · $.result.status equals VERIFIED)'));
+      const keyWrap = h('div', { style:'margin-top:8px;display:none' },
+        h('input', { type:'text', class:'mono', placeholder:'AML-T142', style:'width:100%', oninput:(e)=>draft.xrayKey=e.target.value }));
+      body.append(h('label', { class:'ckbtn' },
+        h('input', { type:'checkbox', onchange:(e)=>{ draft.linkXray=e.target.checked; keyWrap.style.display=e.target.checked?'block':'none'; } }),
+        'Link an existing Xray test now'), keyWrap);
+    },
+    actions(foot) {
+      foot.append(h('button', { class:'btn', onclick:closeModal }, 'Cancel'),
+        h('button', { class:'btn dark', onclick:()=>{
+          if (!draft.name.trim()) { toast('Enter a test name', true); return; }
+          const key = draft.linkXray ? draft.xrayKey.trim().toUpperCase() : '';
+          if (key) XRAY_EXISTING.add(key);
+          const t = {
+            id:'relay-'+(slug(draft.name)||'test-'+rid()), name:draft.name.trim(), method:draft.method,
+            path:draft.path.trim(), enabled:true, owner:draft.owner.trim()||'unassigned', priority:draft.priority,
+            src:'collections/aml/'+(slug(draft.name)||'test')+'.req.toml',
+            tags:draft.tags.split(',').map(s=>s.trim().toLowerCase()).filter(Boolean),
+            xray:key, reqs:[], plan:'', set:'',
+            assertions: draft.starter ? [
+              { type:'status', op:'is2xx', exp:'2xx', res:null, desc:'HTTP status is 2xx' },
+              { type:'json', path:'$.result.status', op:'equals', exp:'VERIFIED', res:null, desc:'$.result.status equals VERIFIED' },
+            ] : [],
+            run:null,
+          };
+          SUITE.tests.push(t); closeModal(); select(t.id); toast('Created test ' + t.name);
+        } }, 'Create test'));
+    },
+  });
+}
+
+/* ---------------- Export modal ---------------- */
+function buildExport(fmt, opts) {
+  let tests = scopeCount();
+  if (!opts.passed) tests = tests.filter(t => !(t.run && t.run.status === 'pass'));
+  const verdict = t => !t.run ? 'untested' : (t.run.status === 'fail' ? 'failed' : 'passed');
+  if (fmt === 'cel') return buildCelYaml(tests);
+  if (fmt === 'junit') {
+    const fails = tests.reduce((n,t)=> n + (t.run && t.run.status==='fail' ? 1 : 0), 0);
+    let x = '<?xml version="1.0" encoding="UTF-8"?>\n';
+    x += `<testsuite name="AML / verify" tests="${tests.length}" failures="${fails}" timestamp="2026-06-19T09:48:00">\n`;
+    for (const t of tests) {
+      const ms = t.run ? (t.run.ms/1000).toFixed(3) : '0';
+      x += `  <testcase classname="${t.xray||t.id}" name="${t.name}" time="${ms}">\n`;
+      for (const a of t.assertions) if (a.res === 'bad')
+        x += `    <failure message="${(a.err||a.desc).replace(/"/g,'&quot;')}">${a.desc}</failure>\n`;
+      if (!t.run) x += `    <skipped/>\n`;
+      x += `  </testcase>\n`;
+    }
+    return x + '</testsuite>\n';
+  }
+  if (fmt === 'json') {
+    return JSON.stringify(tests.map(t => ({
+      id:t.id, name:t.name, method:t.method, endpoint:'{{baseUrl}}'+t.path, xrayTest:t.xray||null,
+      result: verdict(t), http:t.run?t.run.code:null, durationMs:t.run?t.run.ms:null, env:t.run?t.run.env:null,
+      assertions: t.assertions.map(a => ({ type:a.type, condition:a.desc, status: a.res==='ok'?'pass':a.res==='bad'?'fail':'not-run',
+        ...(opts.diagnostics && a.err ? { message:a.err } : {}) })),
+    })), null, 2);
+  }
+  // xray cloud import format
+  return JSON.stringify({
+    testExecutionKey: pushExec.mode==='existing' && pushExec.key ? pushExec.key : null,
+    info: { summary:'AML verify regression run', project:XRAY_CFG.project, testPlanKey:XRAY_CFG.plan,
+            testEnvironments:[ (getTest(selectedId).run||{}).env || 'Staging' ] },
+    tests: tests.map(t => ({
+      testKey: t.xray || undefined,
+      status: !t.run ? 'TODO' : (t.run.status==='fail' ? 'FAILED' : 'PASSED'),
+      comment: opts.diagnostics ? t.assertions.filter(a=>a.res==='bad').map(a=>a.err).join('; ') || undefined : undefined,
+    })),
+  }, null, 2);
+}
+function buildCelYaml(tests) {
+  let y = '# Relay test suite — AML / verify\n# Visual assertions compiled to CEL, stored as diffable YAML\nsuite: AML / verify\ntests:\n';
+  for (const t of tests) {
+    y += '  - id: ' + t.id + '\n';
+    y += '    name: ' + JSON.stringify(t.name) + '\n';
+    y += '    request: ' + t.method + ' {{baseUrl}}' + t.path + '\n';
+    if (t.xray) y += '    xray: ' + t.xray + '\n';
+    if (t.tags.length) y += '    tags: [' + t.tags.join(', ') + ']\n';
+    const preds = t.assertions.filter(a => a.type !== 'script').map(toCEL).filter(Boolean);
+    y += '    assert:\n';
+    if (preds.length) preds.forEach(p => { y += '      - ' + p.replace(/\n/g, ' ') + '\n'; });
+    else y += '      []\n';
+    const scripts = t.assertions.filter(a => a.type === 'script' && a.code);
+    if (scripts.length) { y += '    script: |\n'; scripts.forEach(s => s.code.trim().split('\n').forEach(l => y += '      ' + l + '\n')); }
+  }
+  return y;
+}
+function openExport(initial) {
+  const state = { fmt: initial || 'junit', passed:true, diagnostics:true };
+  openModal({
+    title:'Export results', subtitle:'Scope: '+scopeCount().length+' test'+(scopeCount().length===1?'':'s')+' ('+runScope+')', wide:true,
+    build(body, box) {
+      const render = () => { const p = box.querySelector('#expPrev'); if (p) p.textContent = buildExport(state.fmt, state); };
+      body.append(frow('Format', segGroup([['junit','JUnit XML'],['json','Relay JSON'],['xray','Xray JSON'],['cel','CEL · YAML']], state.fmt,
+        (v)=>{ state.fmt=v; render(); }, true)));
+      body.append(h('label', { class:'ckbtn' }, h('input', { type:'checkbox', checked:state.passed,
+        onchange:(e)=>{ state.passed=e.target.checked; render(); } }), 'Include passing tests'));
+      body.append(h('label', { class:'ckbtn' }, h('input', { type:'checkbox', checked:state.diagnostics,
+        onchange:(e)=>{ state.diagnostics=e.target.checked; render(); } }), 'Include failure diagnostics'));
+      body.append(h('div', { class:'flbl', style:'margin-top:12px' }, 'Preview'));
+      body.append(h('pre', { id:'expPrev', class:'codePrev' }, buildExport(state.fmt, state)));
+    },
+    actions(foot, box) {
+      const ext = { junit:'xml', json:'json', xray:'json', cel:'yaml' }, type = { junit:'application/xml', json:'application/json', xray:'application/json', cel:'text/yaml' };
+      foot.append(h('button', { class:'btn', onclick:()=>{
+        navigator.clipboard && navigator.clipboard.writeText(box.querySelector('#expPrev').textContent);
+        toast('Copied to clipboard'); } }, 'Copy'),
+        h('button', { class:'btn dark', onclick:()=>{
+          const name = 'aml-verify.' + ({junit:'junit.xml', json:'results.json', xray:'xray.json', cel:'suite.yaml'})[state.fmt];
+          download(name, box.querySelector('#expPrev').textContent, type[state.fmt]);
+          toast('Downloaded ' + name); closeModal(); } }, 'Download'));
+    },
+  });
+}
+
+/* ---------------- Xray / Jira connection config ---------------- */
+function openXrayConfig() {
+  const d = { ...XRAY_CFG };
+  openModal({
+    title:'Xray / Jira connection', subtitle:'Credentials are stored locally in Relay', wide:true,
+    build(body, box) {
+      body.append(h('div', { class:'fsec' }, 'Jira'));
+      body.append(frow('Jira base URL', h('input', { type:'text', class:'mono', value:d.jiraUrl, oninput:(e)=>d.jiraUrl=e.target.value }),
+        'e.g. <span class="mono">https://your-org.atlassian.net</span>'));
+      body.append(h('div', { class:'frow two' },
+        frow('Account email', h('input', { type:'email', class:'mono', value:d.email, oninput:(e)=>d.email=e.target.value })),
+        frow('Jira API token', h('input', { type:'password', class:'mono', value:d.apiToken, placeholder:'••••••••', oninput:(e)=>d.apiToken=e.target.value }))));
+
+      body.append(h('div', { class:'fsec' }, 'Xray authentication'));
+      body.append(frow('Deployment', segGroup([['cloud','Xray Cloud (client id / secret)'],['server','Server / DC (API key)']],
+        d.auth, (v)=>{ d.auth=v; renderAuth(); }, true)));
+      const authBox = h('div'); body.append(authBox);
+      function renderAuth() {
+        authBox.innerHTML = '';
+        if (d.auth === 'cloud') {
+          authBox.append(h('div', { class:'frow two' },
+            frow('Client ID', h('input', { type:'text', class:'mono', value:d.clientId, oninput:(e)=>d.clientId=e.target.value })),
+            frow('Client secret', h('input', { type:'password', class:'mono', value:d.clientSecret, placeholder:'••••••••', oninput:(e)=>d.clientSecret=e.target.value }))));
+        } else {
+          authBox.append(frow('Xray API key', h('input', { type:'password', class:'mono', value:d.apiKey, placeholder:'••••••••', oninput:(e)=>d.apiKey=e.target.value }),
+            'Personal access token from your Xray Server / Data Center instance.'));
+        }
+      }
+      renderAuth();
+
+      body.append(h('div', { class:'fsec' }, 'Defaults for new issues'));
+      body.append(h('div', { class:'frow three' },
+        frow('Project key', h('input', { type:'text', class:'mono', value:d.project, oninput:(e)=>d.project=e.target.value })),
+        frow('Test plan', h('input', { type:'text', class:'mono', value:d.plan, oninput:(e)=>d.plan=e.target.value })),
+        frow('Test set', h('input', { type:'text', class:'mono', value:d.testSet, oninput:(e)=>d.testSet=e.target.value }))));
+      body.append(h('div', { class:'fhint' }, 'New Test, Test Set, Test Execution and Test Plan issues are created in this project and linked automatically.'));
+      body.append(h('div', { id:'connSlot', style:'margin-top:14px' },
+        h('span', { class:'connLine '+(XRAY_CFG.connected?'ok':'idle') }, h('span',{class:'d'}),
+          XRAY_CFG.connected ? 'Connected · Xray Cloud · project '+XRAY_CFG.project : 'Not connected')));
+    },
+    actions(foot, box) {
+      foot.append(h('button', { class:'btn', onclick:()=>{
+        const slot = box.querySelector('#connSlot'); slot.innerHTML='';
+        slot.append(h('span',{class:'connLine idle'},h('span',{class:'d'}),'Testing connection…'));
+        const ok = d.jiraUrl.trim() && d.email.trim() && (d.auth==='cloud' ? d.clientId.trim() : d.apiKey.trim());
+        setTimeout(()=>{ slot.innerHTML='';
+          slot.append(h('span',{class:'connLine '+(ok?'ok':'bad')},h('span',{class:'d'}),
+            ok ? 'Connected · '+(d.auth==='cloud'?'Xray Cloud':'Xray Server')+' · project '+(d.project||'—') : 'Missing required credentials'));
+        }, 850);
+      } }, 'Test connection'),
+        h('span', { class:'grow' }),
+        h('button', { class:'btn', onclick:closeModal }, 'Cancel'),
+        h('button', { class:'btn dark', onclick:()=>{
+          if (!d.jiraUrl.trim() || !d.email.trim()) { toast('Jira URL and email are required', true); return; }
+          Object.assign(XRAY_CFG, d, { connected:true });
+          updateXrayStatus(); closeModal(); renderMain(); renderMeta(); toast('Saved Xray connection');
+        } }, 'Save connection'));
+    },
+  });
+}
+function updateXrayStatus() {
+  $('sbXray').textContent = 'xray: ' + (XRAY_CFG.connected ? 'connected ('+XRAY_CFG.project+')' : 'not connected');
+}
+
+/* ---------------- Create Xray issue (Test / Set / Execution / Plan) ---------------- */
+function openCreateIssue(t) {
+  const d = { type:'Test', summary:t.name, addThis:true };
+  openModal({
+    title:'Create Xray issue', subtitle:'In project '+XRAY_CFG.project+' · '+(XRAY_CFG.connected?'connected':'not connected'),
+    build(body) {
+      body.append(frow('Issue type', segGroup([['Test','Test'],['Test Set','Test Set'],['Test Execution','Test Execution'],['Test Plan','Test Plan']],
+        d.type, (v)=>{ d.type=v; const c=document.getElementById('linkThisRow'); if(c) c.style.display = v==='Test' ? 'none' : 'flex'; }, true)));
+      body.append(frow('Summary', h('input', { type:'text', value:d.summary, oninput:(e)=>d.summary=e.target.value }),
+        d.type==='Test' ? 'Assertions on this test become Xray test steps.' : ''));
+      body.append(h('label', { id:'linkThisRow', class:'ckbtn', style:'display:none' },
+        h('input', { type:'checkbox', checked:d.addThis, onchange:(e)=>d.addThis=e.target.checked }),
+        'Add "'+t.name+'" to the new issue'));
+      body.append(h('div', { class:'fhint' }, 'Created via the Xray GraphQL API and linked to this Relay test. Configure the connection from the Push panel.'));
+    },
+    actions(foot) {
+      foot.append(h('button', { class:'btn', onclick:closeModal }, 'Cancel'),
+        h('button', { class:'btn dark', onclick:()=>{ createIssue(t, d.type, d.summary, d.addThis); closeModal(); } }, 'Create issue'));
+    },
+  });
+}
+function createIssue(t, type, summary, addThis) {
+  const pre = { 'Test':'T', 'Test Set':'S', 'Test Execution':'E', 'Test Plan':'P' }[type];
+  const key = XRAY_CFG.project + '-' + pre + rid(900);
+  if (type === 'Test') { XRAY_EXISTING.add(key); t.xray = key; }
+  else if (type === 'Test Set') { if (addThis) t.set = key; }
+  else if (type === 'Test Plan') { if (addThis) t.plan = key; }
+  else if (type === 'Test Execution') { pushExec.mode='existing'; pushExec.key = key; }
+  toast('Created ' + type + ' ' + key + (addThis && type!=='Test' ? ' · linked '+t.name : ''));
+  renderTree(); renderMain(); renderMeta();
+}
+
+/* ---------------- wiring ---------------- */
+$('sideSearch').addEventListener('input', (e)=>{ searchTerm = e.target.value.toLowerCase().trim(); renderTree(); });
+$('newTestBtn').onclick = openNewTest;
+$('dupBtn').onclick = ()=>{ const t=getTest(selectedId); const c={...t, id:t.id+'-copy', name:t.name+' (copy)', assertions:t.assertions.map(a=>({...a})), tags:[...t.tags], reqs:[...t.reqs], run:null}; SUITE.tests.push(c); select(c.id); toast('Duplicated test'); };
+$('perReqBtn').onclick = ()=>toast('Opening '+getTest(selectedId).name+' in request editor → assertions tab');
+$('sbXray').style.cursor = 'pointer';
+$('sbXray').title = 'Configure Xray connection';
+$('sbXray').onclick = openXrayConfig;
+document.querySelectorAll('.navItem:not([disabled])').forEach(b=>{
+  b.addEventListener('click', ()=>{
+    if (b.dataset.view === 'tests') return;
+    if (b.dataset.view === 'settings') { openXrayConfig(); return; }
+    toast(b.textContent.trim()+' — switch view (mock)');
+  });
+});
+
+updateXrayStatus();
+renderFilters(); renderTree(); renderMain(); renderMeta();
+</script>
+</body>
+</html>

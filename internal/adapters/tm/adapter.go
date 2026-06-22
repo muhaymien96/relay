@@ -15,11 +15,21 @@ const (
 // TestResult is one request's outcome in a normalised form suitable for any
 // test-management system.
 type TestResult struct {
-	TestKey    string        // e.g. "AML-T142" from meta.xray.test_key (optional)
-	Name       string        // human name shown in the execution
-	Status     string        // StatusPASS | StatusFAIL | StatusSKIP
-	Comment    string        // failure details / assertion messages
+	TestKey    string // e.g. "AML-T142" from meta.xray.test_key (optional)
+	Name       string // human name shown in the execution
+	Status     string // StatusPASS | StatusFAIL | StatusSKIP
+	Comment    string // failure details / assertion messages
 	DurationMs float64
+	Steps      []TestStep
+}
+
+type TestStep struct {
+	Name     string
+	Type     string
+	Expected string
+	Actual   string
+	Status   string
+	Comment  string
 }
 
 // Execution is a completed collection run ready to be pushed.

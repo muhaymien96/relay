@@ -5,6 +5,8 @@
 **Status:** Draft v0.1
 **Date:** June 2026
 
+> Current state note: this PRD is a product/roadmap document, not the exact shipped-feature reference. The current implementation uses Go 1.25, Wails v2 for `relay-app`, a localhost browser workbench, SQLite-backed UI state, file-based CLI runs, Postman/OpenAPI/curl import, Postman/OpenAPI/curl/k6/Playwright export, scripts, Test Management in the UI, and Xray push through the UI/local API. Some PRD items remain roadmap work, including HAR/Insomnia/Bruno import, OAuth2/SigV4/mTLS helpers, headless CLI Xray push, and canonical `.req.toml` storage for UI-managed Test Management cases.
+
 ---
 
 ## 1. Problem Statement

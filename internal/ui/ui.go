@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/muhaymien96/relay/internal/adapters/tm"
-	"github.com/muhaymien96/relay/internal/adapters/xray"
 	"github.com/muhaymien96/relay/internal/assert"
 	"github.com/muhaymien96/relay/internal/dsl"
 	"github.com/muhaymien96/relay/internal/engine"
@@ -91,7 +90,26 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("GET /api/xray/settings", s.handleXraySettingsGet)
 	mux.HandleFunc("PUT /api/xray/settings", s.handleXraySettingsPut)
+	mux.HandleFunc("PUT /api/xray/credentials", s.handleXrayCredentialsPut)
+	mux.HandleFunc("POST /api/xray/test-connection", s.handleXrayTestConnection)
+	mux.HandleFunc("POST /api/xray/tests/{id}/validate", s.handleXrayTestValidate)
+	mux.HandleFunc("POST /api/xray/tests/{id}/create", s.handleXrayTestCreate)
+	mux.HandleFunc("POST /api/xray/tests/{id}/link-requirements", s.handleXrayLinkRequirements)
+	mux.HandleFunc("POST /api/xray/test-sets/{id}/create", s.handleXrayTestSetCreate)
 	mux.HandleFunc("POST /api/xray/push", s.handleXrayPush)
+	mux.HandleFunc("GET /api/tests/state", s.handleTestsState)
+	mux.HandleFunc("POST /api/tests", s.handleTestCreate)
+	mux.HandleFunc("GET /api/tests/{id}", s.handleTestGet)
+	mux.HandleFunc("PUT /api/tests/{id}", s.handleTestUpdate)
+	mux.HandleFunc("DELETE /api/tests/{id}", s.handleTestDelete)
+	mux.HandleFunc("POST /api/tests/{id}/run", s.handleTestRun)
+	mux.HandleFunc("POST /api/tests/run", s.handleTestsRun)
+	mux.HandleFunc("POST /api/test-folders", s.handleTestFolderCreate)
+	mux.HandleFunc("PATCH /api/test-folders/{id}", s.handleTestFolderUpdate)
+	mux.HandleFunc("DELETE /api/test-folders/{id}", s.handleTestFolderDelete)
+	mux.HandleFunc("POST /api/test-sets", s.handleTestSetCreate)
+	mux.HandleFunc("PUT /api/test-sets/{id}", s.handleTestSetUpdate)
+	mux.HandleFunc("DELETE /api/test-sets/{id}", s.handleTestSetDelete)
 	return mux
 }
 
@@ -431,15 +449,15 @@ func (s *Server) execute(ctx context.Context, req *store.Request, envName string
 }
 
 type runResult struct {
-	RequestID  int64             `json:"requestId"`
-	Name       string            `json:"name"`
-	Method     string            `json:"method"`
-	URL        string            `json:"url"`
-	Status     int               `json:"status"`
-	DurationMs float64           `json:"durationMs"`
-	Passed     bool              `json:"passed"`
-	Error      string            `json:"error,omitempty"`
-	Assertions []assertionResult `json:"assertions,omitempty"`
+	RequestID   int64              `json:"requestId"`
+	Name        string             `json:"name"`
+	Method      string             `json:"method"`
+	URL         string             `json:"url"`
+	Status      int                `json:"status"`
+	DurationMs  float64            `json:"durationMs"`
+	Passed      bool               `json:"passed"`
+	Error       string             `json:"error,omitempty"`
+	Assertions  []assertionResult  `json:"assertions,omitempty"`
 	ScriptTests []scriptTestResult `json:"scriptTests,omitempty"`
 }
 
@@ -707,15 +725,6 @@ func (s *Server) handleImportOpenAPI(w http.ResponseWriter, r *http.Request) {
 
 // --- Xray Cloud settings ---
 
-func (s *Server) handleXraySettingsGet(w http.ResponseWriter, r *http.Request) {
-	set, err := s.DB.XraySettings()
-	if err != nil {
-		httpError(w, 500, err)
-		return
-	}
-	writeJSON(w, set)
-}
-
 func (s *Server) handleXraySettingsPut(w http.ResponseWriter, r *http.Request) {
 	var xs store.XraySettings
 	if err := json.NewDecoder(r.Body).Decode(&xs); err != nil {
@@ -732,9 +741,12 @@ func (s *Server) handleXraySettingsPut(w http.ResponseWriter, r *http.Request) {
 // handleXrayPush runs the collection and pushes results to Xray Cloud.
 func (s *Server) handleXrayPush(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		CollectionID int64  `json:"collectionId"`
-		Env          string `json:"env"`
-		Summary      string `json:"summary"`
+		CollectionID int64   `json:"collectionId"`
+		TestSetID    int64   `json:"testSetId"`
+		RequestID    int64   `json:"requestId"`
+		TestIDs      []int64 `json:"testIds"`
+		Env          string  `json:"env"`
+		Summary      string  `json:"summary"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		httpError(w, 400, err)
@@ -745,51 +757,46 @@ func (s *Server) handleXrayPush(w http.ResponseWriter, r *http.Request) {
 		httpError(w, 422, fmt.Errorf("xray not configured: set project key in Settings → Xray"))
 		return
 	}
-	xrayCfg := xray.Config{
-		ClientID:     os.Getenv("RELAY_XRAY_CLIENT_ID"),
-		ClientSecret: os.Getenv("RELAY_XRAY_CLIENT_SECRET"),
-	}
-	if xrayCfg.ClientID == "" || xrayCfg.ClientSecret == "" {
-		httpError(w, 422, fmt.Errorf("RELAY_XRAY_CLIENT_ID and RELAY_XRAY_CLIENT_SECRET must be set"))
-		return
-	}
-	if xs.CloudURL != "" {
-		xrayCfg.GQLURL = xs.CloudURL
-	}
-
-	// Run the collection.
-	requests, err := s.DB.Requests(in.CollectionID)
-	if err != nil || len(requests) == 0 {
-		httpError(w, 404, fmt.Errorf("collection %d has no requests", in.CollectionID))
+	tests, err := s.selectedTests(in.TestIDs, in.RequestID, in.CollectionID, nil, in.TestSetID)
+	if err != nil {
+		httpError(w, 422, err)
 		return
 	}
 	started := time.Now()
 	var results []tm.TestResult
-	for i := range requests {
-		req := &requests[i]
-		out, _, execErr := s.execute(r.Context(), req, in.Env, false)
+	for _, tc := range tests {
+		if !tc.Enabled {
+			continue
+		}
+		run, execErr := s.runTestCaseValue(r.Context(), tc, in.Env, true)
 		status := tm.StatusPASS
 		comment := ""
 		if execErr != nil {
 			status = tm.StatusFAIL
 			comment = execErr.Error()
 		} else {
-			for _, a := range out.Assertions {
-				if !a.Passed {
+			for _, st := range run.Steps {
+				if !st.Passed {
 					status = tm.StatusFAIL
 					if comment != "" {
 						comment += "; "
 					}
-					comment += a.Message
+					comment += st.Message
 				}
 			}
 		}
 		results = append(results, tm.TestResult{
-			Name:       req.Spec.Name,
+			TestKey:    tc.XrayKey,
+			Name:       tc.Name,
 			Status:     status,
 			Comment:    comment,
-			DurationMs: out.Timing["total"],
+			DurationMs: run.DurationMs,
+			Steps:      tmStepsFromRun(run.Steps),
 		})
+	}
+	if len(results) == 0 {
+		httpError(w, 422, fmt.Errorf("no enabled tests selected"))
+		return
 	}
 	finished := time.Now()
 
@@ -812,13 +819,31 @@ func (s *Server) handleXrayPush(w http.ResponseWriter, r *http.Request) {
 		Results:     results,
 	}
 
-	client := xray.New(xrayCfg)
+	client, err := s.xrayClient()
+	if err != nil {
+		httpError(w, 422, err)
+		return
+	}
 	key, err := client.PushExecution(exec)
 	if err != nil {
 		httpError(w, 502, fmt.Errorf("xray push failed: %w", err))
 		return
 	}
 	writeJSON(w, map[string]string{"executionKey": key})
+}
+
+func tmStepsFromRun(steps []store.TestStepResult) []tm.TestStep {
+	out := make([]tm.TestStep, 0, len(steps))
+	for _, st := range steps {
+		status := tm.StatusPASS
+		if !st.Passed {
+			status = tm.StatusFAIL
+		}
+		out = append(out, tm.TestStep{
+			Name: st.Name, Type: st.Type, Expected: st.Expected, Actual: st.Actual, Status: status, Comment: st.Message,
+		})
+	}
+	return out
 }
 
 func ms(d time.Duration) float64 { return float64(d.Microseconds()) / 1000 }

@@ -3,6 +3,8 @@
 **Status:** Draft v0.1 (companion to PRD v0.1, June 2026)
 **Scope:** Engineering plan to deliver PRD Phases 1–3 (~16–20 weeks)
 
+> Current state note: this document preserves the original roadmap. The codebase has since landed a simpler implementation shape: stdlib `flag` CLI rather than cobra, embedded single-file browser UI plus Wails v2 desktop wrapper rather than a separate React frontend tree, SQLite-backed workbench state, file-based CLI runner, Postman/OpenAPI/curl import, Postman/OpenAPI/curl/k6/Playwright export, goja scripts, UI Test Management, and Xray UI/local API integration. Treat unimplemented items in this plan as roadmap, not current usage instructions.
+
 This document translates the Relay PRD into a concrete build plan: repository layout, module boundaries, sequenced milestones with acceptance criteria, testing/CI strategy, and the key technical decisions that need to be locked in early.
 
 ---

@@ -1,7 +1,8 @@
 # Relay Azure DevOps Pipeline Template
 #
-# Runs a Relay collection, publishes JUnit results to Azure Test Plans,
-# and optionally pushes executions to Xray Cloud.
+# Runs a Relay collection and publishes JUnit results to Azure Test Plans.
+# Current CLI scope does not include headless Xray push; use the UI/local API
+# workaround from docs/ci-cd.md only if you deliberately run a sidecar UI.
 #
 # Usage: reference this template from your azure-pipelines.yml:
 #
@@ -16,7 +17,7 @@
 #       parameters:
 #         collectionDir: collections/aml-regression
 #         environment: sit
-#         pushXray: true
+#         bail: false
 #
 # Or inline the steps directly (see below).
 
@@ -43,7 +44,7 @@ parameters:
 
   - name: pushXray
     type: boolean
-    displayName: Push results to Xray Cloud after run
+    displayName: Reserved for future CLI Xray push support
     default: false
 
   - name: bail
@@ -96,7 +97,8 @@ stages:
               # Forward all RELAY_SECRET_* variables set in the pipeline library.
               RELAY_SECRET_APIKEY: $(RELAY_SECRET_APIKEY)
               RELAY_SECRET_BEARER_TOKEN: $(RELAY_SECRET_BEARER_TOKEN)
-              # Xray credentials (only needed when pushXray: true).
+              # Xray credentials are unused by this template until relay run
+              # grows headless Xray push flags.
               RELAY_XRAY_CLIENT_ID: $(RELAY_XRAY_CLIENT_ID)
               RELAY_XRAY_CLIENT_SECRET: $(RELAY_XRAY_CLIENT_SECRET)
 
@@ -109,7 +111,7 @@ stages:
               testRunTitle: 'Relay — ${{ parameters.collectionDir }}'
             condition: always()
 
-          # Optional: push to Xray Cloud via the relay UI API.
-          # Requires relay ui to be running, which is impractical in headless
-          # CI. Use the CLI approach: relay run --push-xray (roadmap item)
-          # or use the provided xray_push.sh script below.
+          # Xray Cloud push is intentionally not included here. The current
+          # relay CLI writes JUnit/JSON reports but does not push to Xray.
+          # See docs/ci-cd.md for current UI/local API behavior and the
+          # planned relay run --xray-push shape.

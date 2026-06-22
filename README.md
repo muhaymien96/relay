@@ -1,21 +1,18 @@
 # Relay
 
-A fast, lightweight, local-first API client. Collections are plain TOML files
-in your repo — branch, diff, review, and merge them like any other code. The
-same engine drives interactive use and headless CI runs.
+Relay is a fast, lightweight, local-first API client and test runner written in Go. Requests live in plain TOML files, so collections can be branched, reviewed, and merged like code. The same request engine powers the CLI, browser workbench, and native desktop app.
 
-Single static binary (~6MB), no Electron, no account, no cloud, no telemetry.
+Current implementation highlights:
 
-```
-relay send  <file.req.toml>  [--env NAME] [-v]
-relay run   <dir>            [--env NAME] [--report junit|json] [--out FILE]
-                             [--data rows.csv|rows.json] [--bail] [--delay 200ms]
-relay import postman <collection.json> [--out DIR]
-relay export curl <file.req.toml> [--env NAME]
-relay export k6 <dir> [--env NAME] [--out script.js]
-relay export playwright <dir> [--env NAME] [--out api.spec.ts]
-relay ui    [dir]            [--port 7717]
-```
+- Send one request or run every `*.req.toml` file in a collection from the CLI.
+- Generate JUnit or JSON reports for CI.
+- Import Postman collections, OpenAPI specs, and pasted curl commands.
+- Export curl, Postman, OpenAPI, k6, and Playwright artifacts.
+- Use a localhost browser workbench with collections, folders, requests, environments, header presets, history, scripts, runners, and Test Management.
+- Use the native `relay-app` desktop wrapper around the same workbench.
+- Push Test Management runs to Xray Cloud from the UI/local API.
+
+No Electron, no account, no cloud sync, and no telemetry.
 
 ## Install
 
@@ -23,27 +20,61 @@ relay ui    [dir]            [--port 7717]
 go install github.com/muhaymien96/relay/cmd/relay@latest
 ```
 
-Or build from source: `go build -o relay ./cmd/relay`.
+Or build from source:
 
-## Quick start
+```sh
+go build -o relay ./cmd/relay
+```
 
-A request is one file:
+Relay currently targets Go 1.25.
+
+## CLI Usage
+
+```text
+relay send <file.req.toml> [--env NAME] [-v] [--insecure] [--timeout 30s] [--no-redirect]
+relay run  <dir>           [--env NAME] [--report junit|json] [--out FILE]
+                           [--data rows.csv|rows.json] [--delay 0ms] [--bail]
+                           [--insecure] [--timeout 30s] [--no-redirect]
+
+relay import postman <collection.json> [--out DIR]
+relay import openapi <spec.json>       [--out DIR]
+relay import curl '<command>'          [--out FILE]
+
+relay export curl <file.req.toml> [--env NAME]
+relay export postman <dir> [--out collection.json]
+relay export openapi <dir> [--out spec.json]
+relay export k6 <dir> [--env NAME] [--out script.js]
+relay export playwright <dir> [--env NAME] [--out api.spec.ts]
+
+relay ui [dir] [--db relay.db] [--port 7717]
+relay version
+```
+
+Flags can appear before or after positional arguments.
+
+## Quick Start
+
+A request is one `.req.toml` file:
 
 ```toml
-# 02-verify-individual.req.toml
 name = "Verify Individual"
 method = "POST"
 url = "{{baseUrl}}/aml/v2/verify"
+tags = ["regression", "contract"]
+priority = "high"
+xray_key = "AML-T142"
+requirements = ["AML-88"]
 
 [headers]
 Content-Type = "application/json"
+X-Correlation-Id = "{{$uuid}}"
 
 [auth]
-type = "bearer"            # bearer | basic | apikey
+type = "bearer"
 token = "{{apiToken}}"
 
 [body]
-type = "json"              # json | xml | raw | urlencoded (or file = "payload.bin")
+type = "json"
 content = '''
 { "idNumber": "{{testIdNumber}}", "channel": "API" }
 '''
@@ -53,13 +84,20 @@ type = "status"
 equals = 200
 
 [[assertions]]
-type = "jsonpath"          # subset: $.field.nested[0]["key"]
+type = "jsonpath"
 path = "$.result.status"
 equals = "VERIFIED"
 
 [[assertions]]
 type = "max_ms"
 max_ms = 2000
+
+[scripts]
+tests = '''
+pm.test("status is 200", function () {
+    pm.expect(pm.response.code).to.equal(200);
+});
+'''
 ```
 
 Send it:
@@ -68,170 +106,169 @@ Send it:
 relay send 02-verify-individual.req.toml --env local -v
 ```
 
-```
-POST http://127.0.0.1:18080/aml/v2/verify  200 OK  1ms
-< timing: dns=0s connect=368µs tls=0s ttfb=308µs download=127µs total=1.054ms
-{ "result": { "status": "VERIFIED" } }
-```
-
-Run a whole collection (every `*.req.toml` under the directory, in lexical
-order) and emit JUnit for CI:
+Run a whole collection in lexical order and write JUnit for CI:
 
 ```sh
 relay run examples/aml-demo --env local --report junit --out report.xml
 ```
 
-Exit code is non-zero when any request fails, so it slots straight into
-GitHub Actions / Azure DevOps.
+Use JSON instead when another tool needs machine-readable results:
 
-## Environments & secrets
+```sh
+relay run examples/aml-demo --env local --report json --out report.json
+```
 
-`environments/<name>.toml`, found by walking up from the request file:
+`relay run` exits with code `1` when any request, assertion, or script test fails.
+
+## Environments And Secrets
+
+Environment files live at `environments/<name>.toml`. Relay finds them by walking up from the request file or collection directory.
 
 ```toml
-# environments/sit.toml
-secrets = ["apiToken"]      # must appear before any [table]
+secrets = ["apiToken"]
 
 [vars]
 baseUrl = "https://sit.example.com"
 testIdNumber = "8001015009087"
 ```
 
-Secret values never touch the repo: each name in `secrets` is read from the
-process environment as `RELAY_SECRET_<NAME>` (e.g. `apiToken` →
-`RELAY_SECRET_APITOKEN`). A missing secret fails the run with the exact
-variable name to export.
+Secret values are read from process environment variables named `RELAY_SECRET_<NAME>`, with the name uppercased. For `apiToken`, set `RELAY_SECRET_APITOKEN` before running Relay.
 
-Variable precedence: request `[vars]` → folder/collection `[vars]` →
-environment. Computed variables are always available: `{{$uuid}}`,
-`{{$timestamp}}`, `{{$isoTimestamp}}`, `{{$randomInt}}`.
+Variable precedence is request vars, then folder vars, then collection vars, then the selected environment. Computed variables are available everywhere: `{{$uuid}}`, `{{$timestamp}}`, `{{$isoTimestamp}}`, and `{{$randomInt}}`.
 
-## Header inheritance
+## Workspace Files
 
-`collection.toml` at the collection root and `folder.toml` in subfolders
-contribute headers and vars to every request beneath them; deeper files win,
-and a request header overrides an inherited one. Setting a header to `""`
-disables an inherited header for that request.
+Relay reads these files from a collection directory:
 
-```toml
-# collection.toml
-name = "AML Demo"
+- `*.req.toml` for requests.
+- `collection.toml` for collection-level `name`, `[headers]`, and `[vars]`.
+- `folder.toml` for folder-level `name`, `[headers]`, and `[vars]`.
+- `environments/<name>.toml` for environment variables and secret names.
 
-[headers]
-X-Correlation-Id = "{{$uuid}}"
-```
+Headers and variables inherit from collection to folder to request. A request value wins over inherited values; setting an inherited header to an empty string disables it for that request.
 
-## Assertions
+## Request Format
 
-| type       | fields                  | checks                          |
-|------------|-------------------------|---------------------------------|
-| `status`   | `equals`                | HTTP status code                |
-| `jsonpath` | `path`, `equals`        | JSON value at path              |
-| `header`   | `name`, `equals` / `contains` | response header           |
-| `contains` | `contains`              | substring in body               |
-| `max_ms`   | `max_ms`                | total request duration          |
+Supported request fields include:
 
-## Data-driven runs
+- `name`, `method`, `url`
+- `query` table
+- `headers` table
+- `vars` table
+- `auth` table with `bearer`, `basic`, or `apikey`
+- `body` table with `json`, `xml`, `raw`, `urlencoded`, `formdata`, or `binary`
+- `assertions` array
+- `scripts.pre_request` and `scripts.tests`
+- top-level test metadata: `tags`, `owner`, `priority`, `xray_key`, `requirements`
+
+Supported assertions:
+
+| Type | Fields | Checks |
+|---|---|---|
+| `status` | `equals` | HTTP status code |
+| `jsonpath` | `path`, `equals` | JSON value at a simple JSONPath |
+| `header` | `name`, `equals` or `contains` | Response header |
+| `contains` | `contains` | Response body substring |
+| `max_ms` | `max_ms` | Total duration in milliseconds |
+
+Scripts run in a sandboxed goja runtime. The implemented Postman-style subset includes `pm.test`, `pm.expect`, `pm.environment`, `pm.collectionVariables`, `pm.variables`, `pm.response`, and basic `console` methods.
+
+## Data-Driven Runs
 
 ```sh
 relay run my-collection --env sit --data ids.csv
 ```
 
-The collection executes once per row; row values are the
-highest-precedence variables and may appear in assertion expectations too
-(`equals = "{{testIdNumber}}"`). CSV needs a header row; JSON is an array
-of objects.
+The collection executes once per row. CSV files need a header row; JSON files must be an array of objects. Row values have the highest variable precedence and can be used in URLs, headers, bodies, and assertion expectations.
 
-## Import & export
+## Import And Export
 
 ```sh
-relay import postman collection.json --out my-collection   # Postman v2.x
-relay import curl 'curl -X POST -H "..." --data-raw "..." https://api/x'
-relay export postman my-collection --out my.postman_collection.json
-relay export curl my-collection/02-verify.req.toml --env sit
+relay import postman collection.json --out my-collection
+relay import openapi openapi.json --out my-api
+relay import curl 'curl -X POST -H "Content-Type: application/json" --data-raw "{}" https://api.example.com/x'
+
+relay export postman my-collection --out collection.postman_collection.json
+relay export openapi my-collection --out openapi.json
+relay export curl my-collection/verify.req.toml --env sit
 relay export k6 my-collection --env sit --out load.js
 relay export playwright my-collection --env sit --out api.spec.ts
 ```
 
-Postman import maps folders to directories, requests to `.req.toml` files
-(deterministic output — clean diffs), collection variables to
-`collection.toml`, and bearer/basic/apikey auth. Postman **export** is the
-reverse: variables stay as raw `{{placeholders}}` (Postman shares the
-syntax), inherited headers are flattened per request, and assertions become
-`pm.test` scripts — the exported file re-imports through Relay or Postman.
+Postman import maps folders to directories, requests to `.req.toml` files, collection variables to `collection.toml`, and common bearer/basic/API-key auth to Relay auth helpers. OpenAPI import creates a request per operation. curl import accepts a command argument or stdin.
 
-curl import understands what people actually paste (DevTools "Copy as
-cURL", docs, terminals): `-X/-H/-d/--data-raw/--data-urlencode/-u/-b/-A/-G`
-etc.; `Authorization: Bearer` headers become the auth helper, and the body
-type is inferred from Content-Type. The same parser powers the workbench's
-Import button (paste a curl, get a request in the current collection), and
-every request offers copy-as-curl back out.
+Exporters keep secrets out of generated artifacts by using `RELAY_SECRET_*` environment references where applicable.
 
-The k6/Playwright exporters resolve plain variables inline but keep two
-things dynamic in the generated script: secrets become `__ENV.RELAY_SECRET_*`
-/ `process.env.RELAY_SECRET_*` references (no secret value ever lands in a
-script), and computed variables become live expressions so every load-test
-iteration gets a fresh `{{$uuid}}`. Folders map to k6 `group()`s and
-Playwright `describe` blocks; assertions map to `check`s and `expect`s.
-
-## Workbench UI: browser or native desktop
+## Browser Workbench
 
 ```sh
-relay ui my-collection        # browser UI at http://127.0.0.1:7717
+relay ui my-collection
 ```
 
-The same binary serves the full Relay workbench, backed by a local SQLite
-database (`relay.db`): collections / folders / requests with structured
-editors (params, auth, headers with inheritance origins, body, assertions,
-vars), reusable **header presets** attachable to collections and folders
-(secret-flagged values are stored locally, masked in the UI, and excluded
-from exports), environments with `RELAY_SECRET_*` secrets, an in-app
-**collection runner** with pass/fail summary cards and P95 latency, send
-**history** with stored responses, per-request performance metrics, and
-Postman import / k6 / Playwright export — all local-first, localhost-only.
+Relay serves the workbench at `http://127.0.0.1:7717`. Use `--port 0` to pick a free port, or `--db path/to/relay.db` to choose the SQLite database location.
 
-On first launch in a directory of `.req.toml` files the database is seeded
-from them automatically; `/api/export` (and the CLI porters) write the same
-file format back out, so git and CI keep working on plain files while the
-app works on SQLite.
+The workbench includes:
 
-The native desktop app (`relay-app`) wraps the identical UI in a system
-webview via Wails v2 — WebView2 on Windows, WKWebView on macOS, WebKitGTK
-on Linux. No Electron, no bundled browser, ~10MB binary.
+- Collections, folders, and request CRUD.
+- Structured editing for method, URL, query, headers, auth, body, vars, assertions, and scripts.
+- Environment management.
+- Header presets attachable to collections and folders.
+- Send history, response body/headers/timing, request stats, and copy-as-curl.
+- Collection/folder/request runs using the selected environment.
+- Postman, OpenAPI, and curl import.
+- Postman, OpenAPI, k6, Playwright, and file export.
+- Settings for timeout, redirects, TLS verification, and Xray Cloud.
+- Test Management for request-linked tests, test folders, test sets, last runs, and Xray actions.
+
+When a new database opens on an existing directory of `.req.toml` files, Relay seeds the SQLite workspace from those files. The CLI continues to run directly from the files; the workbench stores its live workspace, history, presets, settings, and Test Management data in SQLite.
+
+## Test Management And Xray
+
+The Test Management section is available in the workbench and desktop app. It creates default tests from existing requests and lets you add multiple test cases per request, organize them into test folders and test sets, run selected tests, review step results, and configure Xray traceability.
+
+Current state:
+
+- CLI `relay run` executes request-file assertions and script tests.
+- UI Test Management test cases are stored in `relay.db`.
+- Top-level request metadata (`tags`, `owner`, `priority`, `xray_key`, `requirements`) is loaded into default UI test cases when seeded.
+- Xray Cloud settings and push actions are available from the UI/local API.
+- Headless Xray push flags for `relay run` are not implemented yet.
+
+For daily UI usage, see [docs/API_CLIENT_GUIDE.md](docs/API_CLIENT_GUIDE.md). For CI examples, see [docs/ci-cd.md](docs/ci-cd.md). For the detailed Test Management roadmap, see [docs/TEST_MANAGEMENT_DESIGN.md](docs/TEST_MANAGEMENT_DESIGN.md).
+
+## Desktop App
+
+The `relay-app` command wraps the same workbench in a Wails v2 native webview.
 
 ```sh
-# Linux: needs libgtk-3-dev libwebkit2gtk-4.1-dev to build
-go build -tags desktop,production,webkit2_41 -o relay-app ./cmd/relay-app
+# Windows
+go build -tags desktop,production -ldflags "-s -w -H windowsgui" -o relay-app.exe ./cmd/relay-app
+
 # macOS
-go build -tags desktop,production -o relay-app ./cmd/relay-app
-# Windows: -H windowsgui prevents a console window from opening
-go build -tags desktop,production -ldflags "-H windowsgui" -o relay-app.exe ./cmd/relay-app
+go build -tags desktop,production -ldflags "-s -w" -o relay-app ./cmd/relay-app
 
-relay-app --workspace my-collection   # or RELAY_WORKSPACE=... relay-app
+# Linux, depending on WebKitGTK package naming
+go build -tags desktop,production,webkit2_41 -ldflags "-s -w" -o relay-app ./cmd/relay-app
 ```
+
+Run it with an explicit workspace or set `RELAY_WORKSPACE`:
+
+```sh
+relay-app --workspace my-collection
+```
+
+If no workspace is provided, the app uses the OS app-data location.
 
 ## Distribution
 
-Tagged releases build signed-ready, checksummed binaries for Windows, macOS
-and Linux via [the release workflow](.github/workflows/release.yml). If
-Windows shows **"Windows protected your PC"** when colleagues run the exe,
-that's SmartScreen reacting to an unsigned download — see
-[docs/DISTRIBUTION.md](docs/DISTRIBUTION.md) for the one-click workaround
-(More info → Run anyway), checksum verification, and how to set up code
-signing for a permanent fix.
+Release binaries are ordinary single-file executables: `relay` for the CLI and `relay-app` for the desktop workbench. Windows builds include `.syso` resources for icon/version/manifest metadata. See [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md) for local build commands, checksum guidance, and SmartScreen/code-signing notes.
 
-## UI Usage Guide
+## Project Docs
 
-For day-to-day API client usage (requests, folders, assertions, scripts, and
-environment variables in URL/headers/body), see
-[docs/API_CLIENT_GUIDE.md](docs/API_CLIENT_GUIDE.md).
-
-## Project docs
-
-- [Product Requirements (PRD)](docs/PRD.md)
+- [API Client Guide](docs/API_CLIENT_GUIDE.md)
+- [CI/CD Integration Guide](docs/ci-cd.md)
+- [Distribution Guide](docs/DISTRIBUTION.md)
+- [Test Management Design](docs/TEST_MANAGEMENT_DESIGN.md)
+- [Product Requirements](docs/PRD.md)
 - [Implementation Plan](docs/IMPLEMENTATION_PLAN.md)
-- Example workspace: [`examples/aml-demo`](examples/aml-demo)
-
-OpenAPI import/export, scripting (goja pm-shim), and the Xray adapter are
-tracked in the implementation plan; the engine, CLI, exporters, and shared
-UI here are the foundation they build on.
+- Example workspace: [examples/aml-demo](examples/aml-demo)

@@ -555,6 +555,9 @@ type XraySettings struct {
 	ProjectKey  string `json:"projectKey"`
 	TestPlanKey string `json:"testPlanKey"`
 	CloudURL    string `json:"cloudUrl"` // override default; empty = Xray Cloud default
+	AuthURL     string `json:"authUrl"`  // override auth endpoint for tests/on-prem proxies
+	Labels      string `json:"labels"`
+	Component   string `json:"component"`
 }
 
 func (s *Store) XraySettings() (XraySettings, error) {
