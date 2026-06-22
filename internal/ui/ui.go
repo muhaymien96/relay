@@ -92,6 +92,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/xray/settings", s.handleXraySettingsGet)
 	mux.HandleFunc("PUT /api/xray/settings", s.handleXraySettingsPut)
 	mux.HandleFunc("POST /api/xray/push", s.handleXrayPush)
+	mux.HandleFunc("GET /api/xray/test", s.handleXrayTestGet)
+	mux.HandleFunc("POST /api/xray/test", s.handleXrayTestCreate)
+	mux.HandleFunc("POST /api/xray/requirements/link", s.handleXrayRequirementsLink)
 	return mux
 }
 
@@ -431,15 +434,15 @@ func (s *Server) execute(ctx context.Context, req *store.Request, envName string
 }
 
 type runResult struct {
-	RequestID  int64             `json:"requestId"`
-	Name       string            `json:"name"`
-	Method     string            `json:"method"`
-	URL        string            `json:"url"`
-	Status     int               `json:"status"`
-	DurationMs float64           `json:"durationMs"`
-	Passed     bool              `json:"passed"`
-	Error      string            `json:"error,omitempty"`
-	Assertions []assertionResult `json:"assertions,omitempty"`
+	RequestID   int64              `json:"requestId"`
+	Name        string             `json:"name"`
+	Method      string             `json:"method"`
+	URL         string             `json:"url"`
+	Status      int                `json:"status"`
+	DurationMs  float64            `json:"durationMs"`
+	Passed      bool               `json:"passed"`
+	Error       string             `json:"error,omitempty"`
+	Assertions  []assertionResult  `json:"assertions,omitempty"`
 	ScriptTests []scriptTestResult `json:"scriptTests,omitempty"`
 }
 
@@ -729,40 +732,151 @@ func (s *Server) handleXraySettingsPut(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, xs)
 }
 
-// handleXrayPush runs the collection and pushes results to Xray Cloud.
+// xrayConfig builds an xray.Config from stored (non-secret) settings plus
+// the secret env vars, or returns an error describing what's missing.
+func (s *Server) xrayConfig() (xray.Config, store.XraySettings, error) {
+	xs, err := s.DB.XraySettings()
+	if err != nil || xs.ProjectKey == "" {
+		return xray.Config{}, xs, fmt.Errorf("xray not configured: set project key in Settings → Xray")
+	}
+	cfg := xray.ConfigFromEnv()
+	if cfg.ClientID == "" || cfg.ClientSecret == "" {
+		return xray.Config{}, xs, fmt.Errorf("RELAY_XRAY_CLIENT_ID and RELAY_XRAY_CLIENT_SECRET must be set")
+	}
+	if xs.CloudURL != "" {
+		cfg.GQLURL = xs.CloudURL
+	}
+	if xs.JiraBaseURL != "" {
+		cfg.JiraBaseURL = xs.JiraBaseURL
+	}
+	if xs.JiraEmail != "" {
+		cfg.JiraEmail = xs.JiraEmail
+	}
+	return cfg, xs, nil
+}
+
+// scopedRequests filters a collection's requests down to an explicit set of
+// request IDs (if any) and/or a tag expression like "regression,!flaky"
+// (comma-separated terms, "!" prefix negates).
+func scopedRequests(all []store.Request, requestIDs []int64, tagExpr string) []store.Request {
+	var byID map[int64]bool
+	if len(requestIDs) > 0 {
+		byID = make(map[int64]bool, len(requestIDs))
+		for _, id := range requestIDs {
+			byID[id] = true
+		}
+	}
+	out := make([]store.Request, 0, len(all))
+	for _, req := range all {
+		if byID != nil && !byID[req.ID] {
+			continue
+		}
+		if !matchesTagExpr(req.Spec.Tags, tagExpr) {
+			continue
+		}
+		out = append(out, req)
+	}
+	return out
+}
+
+// matchesTagExpr evaluates a comma-separated tag expression against a
+// test's tags. Each term must be present (or, with a "!" prefix, absent).
+// An empty expression matches everything.
+func matchesTagExpr(tags []string, expr string) bool {
+	expr = strings.TrimSpace(expr)
+	if expr == "" {
+		return true
+	}
+	have := make(map[string]bool, len(tags))
+	for _, t := range tags {
+		have[strings.ToLower(strings.TrimSpace(t))] = true
+	}
+	for _, term := range strings.Split(expr, ",") {
+		term = strings.TrimSpace(term)
+		if term == "" {
+			continue
+		}
+		if strings.HasPrefix(term, "!") {
+			if have[strings.ToLower(strings.TrimSpace(term[1:]))] {
+				return false
+			}
+			continue
+		}
+		if !have[strings.ToLower(term)] {
+			return false
+		}
+	}
+	return true
+}
+
+// pushMappingRow is one row of the dry-run preview: what will happen to a
+// given test on push, before any network call mutates Xray state.
+type pushMappingRow struct {
+	RequestID int64  `json:"requestId"`
+	Name      string `json:"name"`
+	XrayKey   string `json:"xrayKey,omitempty"`
+	Status    string `json:"status"` // linked | missing | create
+	Detail    string `json:"detail,omitempty"`
+}
+
+// handleXrayPush runs the (scoped) collection and pushes results to Xray
+// Cloud, or — with dryRun — previews the test/key mapping without pushing.
 func (s *Server) handleXrayPush(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		CollectionID int64  `json:"collectionId"`
-		Env          string `json:"env"`
-		Summary      string `json:"summary"`
+		CollectionID int64   `json:"collectionId"`
+		Env          string  `json:"env"`
+		Summary      string  `json:"summary"`
+		RequestIDs   []int64 `json:"requestIds,omitempty"`
+		Tags         string  `json:"tags,omitempty"`
+		DryRun       bool    `json:"dryRun,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		httpError(w, 400, err)
 		return
 	}
-	xs, err := s.DB.XraySettings()
-	if err != nil || xs.ProjectKey == "" {
-		httpError(w, 422, fmt.Errorf("xray not configured: set project key in Settings → Xray"))
+	cfg, xs, err := s.xrayConfig()
+	if err != nil {
+		httpError(w, 422, err)
 		return
-	}
-	xrayCfg := xray.Config{
-		ClientID:     os.Getenv("RELAY_XRAY_CLIENT_ID"),
-		ClientSecret: os.Getenv("RELAY_XRAY_CLIENT_SECRET"),
-	}
-	if xrayCfg.ClientID == "" || xrayCfg.ClientSecret == "" {
-		httpError(w, 422, fmt.Errorf("RELAY_XRAY_CLIENT_ID and RELAY_XRAY_CLIENT_SECRET must be set"))
-		return
-	}
-	if xs.CloudURL != "" {
-		xrayCfg.GQLURL = xs.CloudURL
 	}
 
-	// Run the collection.
-	requests, err := s.DB.Requests(in.CollectionID)
-	if err != nil || len(requests) == 0 {
+	all, err := s.DB.Requests(in.CollectionID)
+	if err != nil || len(all) == 0 {
 		httpError(w, 404, fmt.Errorf("collection %d has no requests", in.CollectionID))
 		return
 	}
+	requests := scopedRequests(all, in.RequestIDs, in.Tags)
+	if len(requests) == 0 {
+		httpError(w, 422, fmt.Errorf("no tests match the selected scope"))
+		return
+	}
+
+	client := xray.New(cfg)
+
+	if in.DryRun {
+		rows := make([]pushMappingRow, 0, len(requests))
+		for i := range requests {
+			req := &requests[i]
+			row := pushMappingRow{RequestID: req.ID, Name: req.Spec.Name, XrayKey: req.Spec.XrayKey}
+			if req.Spec.XrayKey == "" {
+				row.Status = "create"
+				row.Detail = "no Xray key linked — Xray will auto-provision a test issue"
+			} else if ref, gerr := client.GetTest(req.Spec.XrayKey); gerr != nil {
+				row.Status = "missing"
+				row.Detail = gerr.Error()
+			} else if ref == nil {
+				row.Status = "missing"
+				row.Detail = fmt.Sprintf("%s not found in Xray", req.Spec.XrayKey)
+			} else {
+				row.Status = "linked"
+				row.Detail = ref.Summary
+			}
+			rows = append(rows, row)
+		}
+		writeJSON(w, map[string]any{"rows": rows})
+		return
+	}
+
 	started := time.Now()
 	var results []tm.TestResult
 	for i := range requests {
@@ -785,6 +899,7 @@ func (s *Server) handleXrayPush(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		results = append(results, tm.TestResult{
+			TestKey:    req.Spec.XrayKey,
 			Name:       req.Spec.Name,
 			Status:     status,
 			Comment:    comment,
@@ -812,13 +927,125 @@ func (s *Server) handleXrayPush(w http.ResponseWriter, r *http.Request) {
 		Results:     results,
 	}
 
-	client := xray.New(xrayCfg)
 	key, err := client.PushExecution(exec)
 	if err != nil {
 		httpError(w, 502, fmt.Errorf("xray push failed: %w", err))
 		return
 	}
 	writeJSON(w, map[string]string{"executionKey": key})
+}
+
+// handleXrayTestGet looks up an existing Xray test issue by key, used by
+// the "link existing test" traceability action to validate a key before
+// it's saved onto the request.
+func (s *Server) handleXrayTestGet(w http.ResponseWriter, r *http.Request) {
+	key := strings.TrimSpace(r.URL.Query().Get("key"))
+	if key == "" {
+		httpError(w, 400, fmt.Errorf("missing key"))
+		return
+	}
+	cfg, _, err := s.xrayConfig()
+	if err != nil {
+		httpError(w, 422, err)
+		return
+	}
+	ref, err := xray.New(cfg).GetTest(key)
+	if err != nil {
+		httpError(w, 502, err)
+		return
+	}
+	writeJSON(w, ref) // null when not found
+}
+
+// handleXrayTestCreate creates a new Xray test issue for a request and
+// saves the resulting key onto it.
+func (s *Server) handleXrayTestCreate(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		RequestID int64  `json:"requestId"`
+		Summary   string `json:"summary"`
+		TestType  string `json:"testType"`
+		Steps     string `json:"steps"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		httpError(w, 400, err)
+		return
+	}
+	req, err := s.DB.Request(in.RequestID)
+	if err != nil {
+		httpError(w, 404, fmt.Errorf("request %d not found", in.RequestID))
+		return
+	}
+	cfg, xs, err := s.xrayConfig()
+	if err != nil {
+		httpError(w, 422, err)
+		return
+	}
+	summary := in.Summary
+	if summary == "" {
+		summary = req.Spec.Name
+	}
+	key, err := xray.New(cfg).CreateTest(tm.NewTest{
+		ProjectKey: xs.ProjectKey,
+		Summary:    summary,
+		TestType:   in.TestType,
+		Steps:      in.Steps,
+	})
+	if err != nil {
+		httpError(w, 502, err)
+		return
+	}
+	req.Spec.XrayKey = key
+	if err := s.DB.UpdateRequest(req); err != nil {
+		httpError(w, 500, err)
+		return
+	}
+	writeJSON(w, map[string]string{"xrayKey": key})
+}
+
+// handleXrayRequirementsLink links a request's Xray test to one or more
+// requirement issues, then persists the requirement keys on the request.
+func (s *Server) handleXrayRequirementsLink(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		RequestID       int64    `json:"requestId"`
+		RequirementKeys []string `json:"requirementKeys"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		httpError(w, 400, err)
+		return
+	}
+	req, err := s.DB.Request(in.RequestID)
+	if err != nil {
+		httpError(w, 404, fmt.Errorf("request %d not found", in.RequestID))
+		return
+	}
+	if req.Spec.XrayKey == "" {
+		httpError(w, 422, fmt.Errorf("link or create an Xray test before linking requirements"))
+		return
+	}
+	cfg, _, err := s.xrayConfig()
+	if err != nil {
+		httpError(w, 422, err)
+		return
+	}
+	if err := xray.New(cfg).LinkRequirements(req.Spec.XrayKey, in.RequirementKeys); err != nil {
+		httpError(w, 502, err)
+		return
+	}
+	existing := map[string]bool{}
+	for _, k := range req.Spec.Requirements {
+		existing[k] = true
+	}
+	for _, k := range in.RequirementKeys {
+		if k != "" && !existing[k] {
+			req.Spec.Requirements = append(req.Spec.Requirements, k)
+			existing[k] = true
+		}
+	}
+	if err := s.DB.UpdateRequest(req); err != nil {
+		httpError(w, 500, err)
+		return
+	}
+	writeJSON(w, map[string]any{"requirements": req.Spec.Requirements})
 }
 
 func ms(d time.Duration) float64 { return float64(d.Microseconds()) / 1000 }

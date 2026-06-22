@@ -554,7 +554,14 @@ func (s *Store) SaveSettings(set Settings) error {
 type XraySettings struct {
 	ProjectKey  string `json:"projectKey"`
 	TestPlanKey string `json:"testPlanKey"`
+	TestSetKey  string `json:"testSetKey"`
 	CloudURL    string `json:"cloudUrl"` // override default; empty = Xray Cloud default
+
+	// JiraBaseURL/JiraEmail are needed for requirement-linking (plain Jira
+	// REST, not Xray's GraphQL API). Not secret — the API token that pairs
+	// with JiraEmail is read from RELAY_JIRA_API_TOKEN only, never stored.
+	JiraBaseURL string `json:"jiraBaseUrl"`
+	JiraEmail   string `json:"jiraEmail"`
 }
 
 func (s *Store) XraySettings() (XraySettings, error) {
