@@ -41,6 +41,12 @@ type Config struct {
 	JiraAPIToken string // from RELAY_JIRA_API_TOKEN
 }
 
+type Issue struct {
+	IssueID string `json:"issueId,omitempty"`
+	Key     string `json:"key,omitempty"`
+	Summary string `json:"summary,omitempty"`
+}
+
 // ConfigFromEnv reads credentials from standard env vars.
 func ConfigFromEnv() Config {
 	return Config{
@@ -72,119 +78,7 @@ func New(cfg Config) *Client {
 }
 
 func (c *Client) TestConnection() error {
-	_, err := c.doGraphQL(`query RelayConnectionCheck { getTests(jql: "issueType = Test", limit: 1) { total } }`, map[string]any{})
-	return err
-}
-
-func (c *Client) GetTest(key string) (*Issue, error) {
-	if strings.TrimSpace(key) == "" {
-		return nil, fmt.Errorf("test key required")
-	}
-	body, err := c.doGraphQL(`query GetTest($jql: String!) { getTests(jql: $jql, limit: 1) { results { issueId jira(fields: ["key", "summary"]) } } }`,
-		map[string]any{"jql": "key = " + key})
-	if err != nil {
-		return nil, err
-	}
-	var out struct {
-		Data struct {
-			GetTests struct {
-				Results []struct {
-					IssueID string         `json:"issueId"`
-					Jira    map[string]any `json:"jira"`
-				} `json:"results"`
-			} `json:"getTests"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(body, &out); err != nil {
-		return nil, fmt.Errorf("xray: bad get test response: %w", err)
-	}
-	if len(out.Data.GetTests.Results) == 0 {
-		return nil, fmt.Errorf("xray test %s not found", key)
-	}
-	r := out.Data.GetTests.Results[0]
-	issue := &Issue{IssueID: r.IssueID}
-	if v, ok := r.Jira["key"].(string); ok {
-		issue.Key = v
-	}
-	if v, ok := r.Jira["summary"].(string); ok {
-		issue.Summary = v
-	}
-	return issue, nil
-}
-
-func (c *Client) CreateTest(in TestInput) (*Issue, error) {
-	if strings.TrimSpace(in.ProjectKey) == "" {
-		return nil, fmt.Errorf("project key required")
-	}
-	if strings.TrimSpace(in.Summary) == "" {
-		return nil, fmt.Errorf("test summary required")
-	}
-	testType := in.TestType
-	if testType == "" {
-		testType = "Manual"
-	}
-	issue := map[string]any{
-		"projectKey":  in.ProjectKey,
-		"summary":     in.Summary,
-		"description": in.Description,
-		"testType":    map[string]any{"name": testType},
-	}
-	if len(in.Labels) > 0 {
-		issue["labels"] = in.Labels
-	}
-	steps := make([]map[string]any, 0, len(in.Steps))
-	for i, st := range in.Steps {
-		action := st.Name
-		if action == "" {
-			action = fmt.Sprintf("Step %d", i+1)
-		}
-		steps = append(steps, map[string]any{
-			"action": action,
-			"data":   strings.TrimSpace(st.Type + " " + st.Actual),
-			"result": st.Expected,
-		})
-	}
-	vars := map[string]any{"testIssue": issue}
-	if len(steps) > 0 {
-		vars["steps"] = steps
-	}
-	body, err := c.doGraphQL(`mutation CreateTest($testIssue: TestIssueInput!, $steps: [CreateStepInput!]) { createTest(testIssue: $testIssue, steps: $steps) { test { issueId jira(fields: ["key", "summary"]) } warnings } }`, vars)
-	if err != nil {
-		return nil, err
-	}
-	var out struct {
-		Data struct {
-			CreateTest struct {
-				Test struct {
-					IssueID string         `json:"issueId"`
-					Jira    map[string]any `json:"jira"`
-				} `json:"test"`
-			} `json:"createTest"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(body, &out); err != nil {
-		return nil, fmt.Errorf("xray: bad create test response: %w", err)
-	}
-	created := out.Data.CreateTest.Test
-	issueOut := &Issue{IssueID: created.IssueID}
-	if v, ok := created.Jira["key"].(string); ok {
-		issueOut.Key = v
-	}
-	if v, ok := created.Jira["summary"].(string); ok {
-		issueOut.Summary = v
-	}
-	if issueOut.Key == "" {
-		return nil, fmt.Errorf("xray create test returned no key")
-	}
-	return issueOut, nil
-}
-
-func (c *Client) LinkRequirements(testKey string, requirementKeys []string) error {
-	if testKey == "" || len(requirementKeys) == 0 {
-		return nil
-	}
-	_, err := c.doGraphQL(`mutation LinkRequirements($testKey: String!, $requirements: [String!]!) { addRequirementsToTestIssue(testIssueKey: $testKey, requirementIssueKeys: $requirements) { addedRequirements warnings } }`,
-		map[string]any{"testKey": testKey, "requirements": requirementKeys})
+	_, err := c.doGQL(`query RelayConnectionCheck { getTests(jql: "issueType = Test", limit: 1) { total } }`, map[string]any{})
 	return err
 }
 
@@ -199,24 +93,22 @@ func (c *Client) CreateTestSet(projectKey, summary string, testKeys []string) (*
 		"testSetIssue": map[string]any{"projectKey": projectKey, "summary": summary},
 		"tests":        testKeys,
 	}
-	body, err := c.doGraphQL(`mutation CreateTestSet($testSetIssue: TestSetIssueInput!, $tests: [String!]) { createTestSet(testSetIssue: $testSetIssue, tests: $tests) { testSet { issueId jira(fields: ["key", "summary"]) } warnings } }`, vars)
+	body, err := c.doGQL(`mutation CreateTestSet($testSetIssue: TestSetIssueInput!, $tests: [String!]) { createTestSet(testSetIssue: $testSetIssue, tests: $tests) { testSet { issueId jira(fields: ["key", "summary"]) } warnings } }`, vars)
 	if err != nil {
 		return nil, err
 	}
 	var out struct {
-		Data struct {
-			CreateTestSet struct {
-				TestSet struct {
-					IssueID string         `json:"issueId"`
-					Jira    map[string]any `json:"jira"`
-				} `json:"testSet"`
-			} `json:"createTestSet"`
-		} `json:"data"`
+		CreateTestSet struct {
+			TestSet struct {
+				IssueID string         `json:"issueId"`
+				Jira    map[string]any `json:"jira"`
+			} `json:"testSet"`
+		} `json:"createTestSet"`
 	}
 	if err := json.Unmarshal(body, &out); err != nil {
 		return nil, fmt.Errorf("xray: bad create test set response: %w", err)
 	}
-	created := out.Data.CreateTestSet.TestSet
+	created := out.CreateTestSet.TestSet
 	issueOut := &Issue{IssueID: created.IssueID}
 	if v, ok := created.Jira["key"].(string); ok {
 		issueOut.Key = v
@@ -234,7 +126,7 @@ func (c *Client) AddTestsToTestPlan(testPlanKey string, testKeys []string) error
 	if testPlanKey == "" || len(testKeys) == 0 {
 		return nil
 	}
-	_, err := c.doGraphQL(`mutation AddTestsToPlan($testPlanKey: String!, $tests: [String!]!) { addTestsToTestPlan(testPlanIssueKey: $testPlanKey, testIssueKeys: $tests) { addedTests warnings } }`,
+	_, err := c.doGQL(`mutation AddTestsToPlan($testPlanKey: String!, $tests: [String!]!) { addTestsToTestPlan(testPlanIssueKey: $testPlanKey, testIssueKeys: $tests) { addedTests warnings } }`,
 		map[string]any{"testPlanKey": testPlanKey, "tests": testKeys})
 	return err
 }
@@ -343,6 +235,33 @@ func (c *Client) PushExecution(exec tm.Execution) (string, error) {
 		}
 	}
 	return key, nil
+}
+
+func stepComment(r tm.TestResult) string {
+	var parts []string
+	if strings.TrimSpace(r.Comment) != "" {
+		parts = append(parts, strings.TrimSpace(r.Comment))
+	}
+	for _, st := range r.Steps {
+		line := strings.TrimSpace(st.Name)
+		if line == "" {
+			line = strings.TrimSpace(st.Type)
+		}
+		if line == "" {
+			line = "step"
+		}
+		if st.Status != "" {
+			line += ": " + st.Status
+		}
+		if st.Comment != "" {
+			line += " - " + st.Comment
+		}
+		if st.Expected != "" {
+			line += " (expected: " + st.Expected + ")"
+		}
+		parts = append(parts, line)
+	}
+	return strings.Join(parts, "\n")
 }
 
 // doGQL authenticates, posts a GraphQL request, and returns the raw "data"

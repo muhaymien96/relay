@@ -1606,6 +1606,320 @@ function showTestFolderCtx(e, folder) {
     ] : []),
   ]);
 }
+
+/* ---------- stable first-class test management overrides ---------- */
+async function renderTestsView() {
+  $('meta').hidden = true;
+  $('crumb').innerHTML = '';
+  $('crumb').append('Workspace / ', h('b', {}, 'Test Management'));
+  const work = $('work');
+  work.innerHTML = '<div class="empty">Loading Test Management…</div>';
+  try {
+    await loadTestsState();
+    renderSide();
+    if (S.testId && findTest(S.testId)) await openTest(S.testId);
+    else renderTestsDashboard();
+  } catch (e) {
+    work.innerHTML = '';
+    work.append(h('div', { class: 'empty' },
+      h('b', {}, 'Test Management could not load'),
+      h('div', { style: 'margin-top:8px;color:var(--dim)' }, e.message || String(e))));
+    toast(e.message || String(e), true);
+  }
+}
+async function loadTestsState() {
+  S.tm = await api('/api/tests/state');
+  S.tm.collections = S.tm.collections || [];
+  S.tm.testFolders = S.tm.testFolders || [];
+  S.tm.testSets = S.tm.testSets || [];
+  S.tm.tests = S.tm.tests || [];
+  S.tm.lastRuns = S.tm.lastRuns || {};
+}
+function allManagedTests() { return S.tm?.tests || []; }
+function findTest(id) { return allManagedTests().find(t => String(t.id) === String(id)); }
+function findReqInTests(requestId) {
+  for (const c of S.tm?.collections || [])
+    for (const q of c.requests || []) if (String(q.id) === String(requestId)) return { col: c, meta: q };
+  return null;
+}
+function testsForSet(setId) {
+  const set = (S.tm?.testSets || []).find(s => String(s.id) === String(setId));
+  const ids = new Set((set?.testIds || []).map(String));
+  return allManagedTests().filter(t => ids.has(String(t.id)));
+}
+function lastRunForTest(id) { return S.tm?.lastRuns?.[id] || S.tm?.lastRuns?.[String(id)]; }
+function testPassed(t) {
+  const r = lastRunForTest(t.id);
+  return r ? r.status === 'PASSED' : null;
+}
+function filteredManagedTests() {
+  const q = (S.testSearch || '').toLowerCase();
+  return allManagedTests().filter(t => {
+    const req = findReqInTests(t.requestId);
+    const hay = [t.name, t.xrayKey, ...(t.tags || []), req?.meta?.name, req?.meta?.url, req?.col?.name].join(' ').toLowerCase();
+    if (q && !hay.includes(q)) return false;
+    for (const chip of S.testChips || []) {
+      if (chip === 'failed' && testPassed(t) !== false) return false;
+      if (chip === 'noxray' && t.xrayKey) return false;
+      if (chip === 'hasassert' && !(t.assertions || []).length && !t.scriptTests) return false;
+      if (chip === 'tagged' && !(t.tags || []).length) return false;
+      if (chip === 'disabled' && t.enabled) return false;
+    }
+    return true;
+  });
+}
+function renderTestsSide(list) {
+  list.append(h('div', { class: 'tmListHead' },
+    h('button', { class: 'btn dark', onclick: () => createManagedTest() }, '+ Test'),
+    h('button', { class: 'btn', onclick: () => createTestFolder() }, '+ Folder')));
+  list.append(h('div', { style: 'padding:0 8px 8px' },
+    h('input', { type: 'text', placeholder: 'Search tests, endpoints, Xray…', style: 'width:100%', value: S.testSearch || '',
+      oninput: (e) => { S.testSearch = e.target.value; renderSide(); } })));
+  const chipDefs = [['failed', 'Failed last run'], ['noxray', 'No Xray'], ['hasassert', 'Has steps'], ['tagged', 'Tagged'], ['disabled', 'Disabled']];
+  const chips = h('div', { class: 'chips', style: 'padding:0 8px 10px' });
+  S.testChips = S.testChips || [];
+  for (const [key, label] of chipDefs) {
+    const on = S.testChips.includes(key);
+    chips.append(h('button', { class: 'att' + (on ? ' on' : ''), style: 'font-size:11px;padding:2px 9px', onclick: () => {
+      S.testChips = on ? S.testChips.filter(x => x !== key) : [...S.testChips, key]; renderSide();
+    } }, label));
+  }
+  list.append(chips);
+  const tests = filteredManagedTests();
+  const folders = [{ id: '', name: 'Unfiled tests' }, ...(S.tm?.testFolders || [])];
+  for (const f of folders) {
+    const group = tests.filter(t => String(t.folderId || '') === String(f.id));
+    list.append(testFolderRow(f, group.length));
+    if (!group.length) list.append(h('div', { class: 'histRow', style: 'margin-left:8px' }, h('small', {}, 'Drop tests here or use Move to folder')));
+    for (const t of group) list.append(testSideRow(t));
+  }
+  if (!tests.length) list.append(h('div', { class: 'histRow' }, h('small', {}, 'No tests match')));
+  if ((S.tm?.testSets || []).length) {
+    list.append(h('div', { class: 'tmGroup' }, 'Test sets'));
+    for (const set of S.tm.testSets) list.append(h('div', {
+      class: 'tmTestRow' + (String(S.testSetId) === String(set.id) ? ' on' : ''),
+      onclick: () => renderTestSetEditor(set.id),
+    }, h('span', {}, '▣'), h('span', {}, h('span', { class: 'name' }, set.name), h('small', {}, `${(set.testIds || []).length} tests${set.xrayKey ? ' · ' + set.xrayKey : ''}`)), h('span', { class: 'tmBadge' }, 'SET')));
+  }
+}
+function testFolderRow(f, count) {
+  return h('div', {
+    class: 'tmFolderRow',
+    oncontextmenu: (e) => { e.preventDefault(); e.stopPropagation(); showTestFolderCtx(e, f); },
+    ondragover: (e) => { if (e.dataTransfer?.types.includes('text/test-id')) { e.preventDefault(); e.currentTarget.classList.add('drag-over'); } },
+    ondragleave: (e) => e.currentTarget.classList.remove('drag-over'),
+    ondrop: async (e) => {
+      e.preventDefault(); e.currentTarget.classList.remove('drag-over');
+      const id = e.dataTransfer?.getData('text/test-id'); if (!id) return;
+      await moveManagedTestToFolder(id, f.id || null);
+    },
+    title: 'Right-click for folder actions. Drop tests here to move them.',
+  }, h('span', {}, '▾'), h('span', {}, f.id ? '📁' : '▤'), h('span', {}, f.name), h('span', { class: 'count' }, String(count)));
+}
+function testSideRow(t) {
+  const req = findReqInTests(t.requestId);
+  const passed = testPassed(t);
+  return h('div', {
+    class: 'tmTestRow' + (String(t.id) === String(S.testId) ? ' on' : ''),
+    draggable: 'true',
+    onclick: () => openTest(t.id),
+    ondragstart: (e) => { e.currentTarget.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/test-id', String(t.id)); },
+    ondragend: (e) => { e.currentTarget.classList.remove('dragging'); document.querySelectorAll('.tmFolderRow.drag-over').forEach(el => el.classList.remove('drag-over')); },
+    oncontextmenu: (e) => { e.preventDefault(); e.stopPropagation(); showManagedTestCtx(e, t); },
+    title: 'Drag to a folder or right-click for test actions',
+  },
+    h('span', { class: 'method m-' + (req?.meta?.method || 'GET') }, req?.meta?.method || 'GET'),
+    h('span', {}, h('span', { class: 'name' }, t.name), h('small', {}, `${req?.meta?.name || 'request'} · ${req?.col?.name || 'collection'}`)),
+    h('span', { class: 'tmBadge ' + (passed === false ? 'bad' : passed === true ? 'ok' : '') }, passed === false ? 'FAIL' : passed === true ? 'PASS' : (t.xrayKey || 'NEW')));
+}
+function renderTestsDashboard() {
+  const tests = allManagedTests();
+  const linked = tests.filter(t => t.xrayKey).length;
+  const failed = tests.filter(t => testPassed(t) === false).length;
+  const disabled = tests.filter(t => !t.enabled).length;
+  const work = $('work'); work.innerHTML = ''; $('meta').hidden = true;
+  const shell = h('div', { class: 'tmShell' });
+  shell.append(h('div', { class: 'card tmHero' },
+    h('div', {}, h('h1', {}, 'Test Management'), h('p', {}, 'Create multiple API tests per request, organize them into folders and test sets, run selected scopes, and sync results with Xray/Jira.')),
+    h('div', { class: 'tmActions' },
+      h('button', { class: 'btn dark', onclick: () => createManagedTest() }, 'Create test'),
+      h('button', { class: 'btn', onclick: () => createTestSet() }, 'Create test set'),
+      h('button', { class: 'btn', onclick: () => { S.view = 'settings'; document.querySelector('[data-view=settings]').click(); } }, 'Xray settings'))));
+  shell.append(h('div', { class: 'tmGrid' }, tmStat('Tests', tests.length), tmStat('Xray linked', linked), tmStat('Failed last run', failed), tmStat('Disabled', disabled)));
+  const recent = h('div', { class: 'card tmCard' },
+    h('div', { class: 'tmCardHead' }, h('h2', {}, 'Recent/selected tests'), h('button', { class: 'btn', onclick: () => runManagedTests({}) }, 'Run all')));
+  if (!tests.length) recent.append(h('div', { class: 'empty' }, 'No tests yet. Create one from an endpoint.'));
+  for (const t of tests.slice(0, 12)) recent.append(testSummaryRow(t));
+  shell.append(recent);
+  work.append(shell);
+}
+function tmStat(label, value) {
+  return h('div', { class: 'card tmStat' }, h('span', { class: 'lbl' }, label), h('b', {}, String(value)));
+}
+function testSummaryRow(t) {
+  const req = findReqInTests(t.requestId);
+  const passed = testPassed(t);
+  return h('div', { class: 'runRow', style: 'padding:9px 0' },
+    h('span', { class: 'method m-' + (req?.meta?.method || 'GET') }, req?.meta?.method || 'GET'),
+    h('span', { style: 'min-width:0;flex:1' }, h('b', {}, t.name), h('small', { style: 'display:block;color:var(--dim);overflow-wrap:anywhere' }, req?.meta?.url || '')),
+    h('span', { class: 'tmStatus ' + (passed === false ? 'bad' : passed === true ? 'ok' : 'warn') }, passed === false ? 'FAILED' : passed === true ? 'PASSED' : 'NOT RUN'),
+    h('button', { class: 'iconBtn', onclick: () => openTest(t.id) }, 'Open'));
+}
+function uiAssertion(a) {
+  if (a.type === 'jsonpath') return { type: 'json', path: a.path || '$.', op: 'equals', exp: a.equals ?? '' };
+  if (a.type === 'contains') return { type: 'text', op: 'contains', exp: a.contains || '' };
+  if (a.type === 'max_ms') return { type: 'timing', op: '<', exp: String(a.max_ms || 1000) };
+  if (a.type === 'status') return { type: 'status', op: 'equals', exp: String(a.equals ?? 200) };
+  if (a.type === 'header') return { type: 'header', name: a.name || '', op: 'equals', exp: a.equals ?? '' };
+  return { ...a };
+}
+function backendAssertion(a) {
+  if (a.type === 'json') return { type: 'jsonpath', path: a.path || '$.', equals: a.exp ?? '' };
+  if (a.type === 'text') return { type: 'contains', contains: a.exp || '' };
+  if (a.type === 'timing') return { type: 'max_ms', max_ms: parseInt(a.exp, 10) || 1000 };
+  if (a.type === 'status') return { type: 'status', equals: parseInt(a.exp, 10) || 200 };
+  if (a.type === 'header') return { type: 'header', name: a.name || '', equals: a.exp ?? '' };
+  return { ...a };
+}
+async function saveManagedTest(test, opts = {}) {
+  const payload = { ...test, assertions: (test.assertions || []).map(backendAssertion) };
+  const saved = await api('/api/tests/' + test.id, { method: 'PUT', body: payload });
+  const idx = (S.tm?.tests || []).findIndex(t => String(t.id) === String(saved.id));
+  if (idx >= 0) S.tm.tests[idx] = saved;
+  if (opts.reload) await loadTestsState();
+  return saved;
+}
+async function openTest(id) {
+  S.testId = id; S.testSetId = null;
+  try {
+    const test = await api('/api/tests/' + id);
+    const idx = (S.tm?.tests || []).findIndex(t => String(t.id) === String(test.id));
+    if (idx >= 0) S.tm.tests[idx] = test; else await loadTestsState();
+    renderSide(); renderTestEditor(test);
+  } catch (e) { toast(e.message, true); }
+}
+function renderTestEditor(sourceTest) {
+  const meta = findReqInTests(sourceTest.requestId);
+  const test = { ...sourceTest, assertions: (sourceTest.assertions || []).map(uiAssertion) };
+  $('meta').hidden = true;
+  $('crumb').innerHTML = '';
+  $('crumb').append('Test Management / ', h('b', {}, test.name));
+  const work = $('work'); work.innerHTML = '';
+  const save = debounce(async () => {
+    try {
+      const saved = await saveManagedTest(test);
+      test.updatedAt = saved.updatedAt;
+      renderSide();
+    } catch (e) { toast(e.message, true); }
+  }, 350);
+  const shell = h('div', { class: 'tmEditor' });
+  const main = h('div', { class: 'tmMain' });
+  main.append(h('section', { class: 'card tmCard' },
+    h('div', { class: 'tmCardHead' }, h('h2', {}, 'Test identity'), h('span', { class: 'tmStatus ' + (test.enabled ? 'ok' : 'warn') }, test.enabled ? 'ENABLED' : 'DISABLED')),
+    h('div', { class: 'tmFormGrid' },
+      h('label', {}, 'Name'), h('input', { type: 'text', value: test.name, oninput: e => { test.name = e.target.value; save(); } }),
+      h('label', {}, 'Endpoint'), endpointSelect(test, save),
+      h('label', {}, 'Request'), h('div', { class: 'tmUrl' }, h('span', { class: 'method m-' + (meta?.meta?.method || '') }, meta?.meta?.method || ''), ' ', meta?.meta?.url || ''),
+      h('label', {}, 'Folder'), testFolderSelect(test, save),
+      h('label', {}, 'Enabled'), h('input', { type: 'checkbox', checked: test.enabled, onchange: e => { test.enabled = e.target.checked; save(); renderTestEditor(test); } }))));
+  main.append(h('section', { class: 'card tmCard' },
+    h('div', { class: 'tmCardHead' }, h('h2', {}, 'Ownership and tags')),
+    h('div', { class: 'tmFormGrid' },
+      h('label', {}, 'Owner'), h('input', { type: 'text', value: test.owner || '', placeholder: 'team or owner', oninput: e => { test.owner = e.target.value; save(); } }),
+      h('label', {}, 'Priority'), h('select', { onchange: e => { test.priority = e.target.value; save(); } }, ['', 'low', 'med', 'high', 'critical'].map(p => h('option', { value: p, selected: (test.priority || '') === p ? '' : undefined }, p || 'unset'))),
+      h('label', {}, 'Tags'), tokenEditor(test.tags || [], vals => { test.tags = vals; save(); }, 'Add tag'))));
+  main.append(h('section', { class: 'card tmCard' },
+    h('div', { class: 'tmCardHead' }, h('h2', {}, `Assertions / Xray steps (${(test.assertions || []).length})`), h('span', { class: 'tmBadge' }, 'one step per assertion')),
+    h('div', { class: 'tmAssertionWrap' }, buildAssertionsEditor({ id: test.id, spec: test }, test, save))));
+  main.append(h('section', { class: 'card tmCard' },
+    h('div', { class: 'tmCardHead' }, h('h2', {}, 'Script test steps'), h('span', { class: 'tmBadge' }, 'pm.test')),
+    h('textarea', { class: 'tmScriptArea', placeholder: 'pm.test("response is valid", () => { pm.expect(pm.response.code).to.eql(200); });',
+      value: test.scriptTests || '', oninput: e => { test.scriptTests = e.target.value; save(); } })));
+  main.append(h('section', { class: 'card tmCard' },
+    h('div', { class: 'tmCardHead' }, h('h2', {}, 'Xray / Jira traceability')),
+    h('div', { class: 'tmFormGrid' },
+      h('label', {}, 'Xray test'), h('input', { type: 'text', value: test.xrayKey || '', placeholder: 'PROJ-123', oninput: e => { test.xrayKey = e.target.value.trim(); save(); } }),
+      h('label', {}, 'Requirements'), tokenEditor(test.requirements || [], vals => { test.requirements = vals; save(); }, 'Add issue key'),
+      h('label', {}, 'Test plan'), h('input', { type: 'text', value: test.testPlanKey || '', placeholder: S.tm?.xray?.testPlanKey || 'PROJ-TP1', oninput: e => { test.testPlanKey = e.target.value.trim(); save(); } })),
+    h('div', { class: 'tmActions', style: 'margin-top:12px;justify-content:flex-start' },
+      h('button', { class: 'btn', onclick: () => validateXrayTest(test) }, 'Validate key'),
+      h('button', { class: 'btn dark', onclick: () => createXrayTest(test) }, test.xrayKey ? 'Recreate/link test' : 'Create Xray test'),
+      h('button', { class: 'btn', onclick: () => linkRequirements(test) }, 'Link requirements'))));
+  const last = lastRunForTest(test.id);
+  main.append(h('section', { class: 'card tmCard' },
+    h('div', { class: 'tmCardHead' }, h('h2', {}, 'Last run'), last ? h('span', { class: 'tmStatus ' + (last.status === 'PASSED' ? 'ok' : 'bad') }, last.status) : h('span', { class: 'tmStatus warn' }, 'NOT RUN')),
+    last ? renderStepList(last.steps || [], last) : h('div', { class: 'note' }, 'Run this test to capture assertion/script step results.')));
+  shell.append(main, renderTestRunRail(test));
+  work.append(shell);
+}
+function endpointSelect(test, save) {
+  const sel = h('select', { onchange: e => { test.requestId = parseInt(e.target.value, 10); save(); renderTestEditor(test); } });
+  for (const c of S.tm?.collections || []) {
+    const group = h('optgroup', { label: c.name });
+    for (const q of c.requests || []) group.append(h('option', { value: q.id, selected: String(q.id) === String(test.requestId) ? '' : undefined }, `${q.method} ${q.name}`));
+    sel.append(group);
+  }
+  return sel;
+}
+function testFolderSelect(test, save) {
+  const sel = h('select', { onchange: e => { test.folderId = e.target.value ? parseInt(e.target.value, 10) : null; save(); renderSide(); } },
+    h('option', { value: '' }, 'Unfiled'));
+  for (const f of S.tm?.testFolders || []) sel.append(h('option', { value: f.id, selected: String(test.folderId || '') === String(f.id) ? '' : undefined }, f.name));
+  return sel;
+}
+function tokenEditor(values, onChange, addLabel) {
+  const wrap = h('div', { class: 'chips' });
+  const render = () => {
+    wrap.innerHTML = '';
+    for (const v of values) wrap.append(h('span', { class: 'att on' }, v, ' ', h('button', { class: 'delRow', onclick: () => { values = values.filter(x => x !== v); onChange(values); render(); } }, '✕')));
+    wrap.append(h('button', { class: 'att', onclick: async () => { const v = await modal.prompt(addLabel); if (!v) return; values = [...values, v.trim()]; onChange(values); render(); } }, '+ ' + addLabel));
+  };
+  render();
+  return wrap;
+}
+function renderStepList(steps, run) {
+  const wrap = h('div', { class: 'tmStepList' });
+  if (run?.error) wrap.append(h('div', { class: 'runErr', style: 'margin:0 0 8px' }, run.error));
+  for (const st of steps) wrap.append(h('div', { class: 'tmStep' },
+    h('span', { class: 'ic ' + (st.passed ? 'ok' : 'bad') }, st.passed ? '✓' : '✕'),
+    h('span', {}, h('b', {}, st.name), h('small', {}, [st.expected, st.message].filter(Boolean).join(' · ')))));
+  if (!steps.length && !run?.error) wrap.append(h('div', { class: 'note' }, 'No step details recorded.'));
+  return wrap;
+}
+function renderTestRunRail(test) {
+  const rail = h('aside', { class: 'tmSide' });
+  rail.append(h('div', { class: 'card tmRunCard' },
+    h('span', { class: 'lbl' }, 'Run scope'),
+    h('select', { id: 'tmRunEnv', style: 'width:100%;margin-top:8px', onchange: e => { S.envName = e.target.value; localStorage.envName = S.envName; } },
+      [h('option', { value: '' }, 'No environment'), ...(S.state.environments || []).map(e => h('option', { value: e.name, selected: e.name === S.envName ? '' : undefined }, e.name))]),
+    h('button', { class: 'btn dark', onclick: () => runSingleManagedTest(test) }, 'Run selected test'),
+    h('button', { class: 'btn', onclick: () => runManagedTests({ requestId: test.requestId }) }, 'Run endpoint tests'),
+    h('button', { class: 'btn', onclick: () => pushXray({ testIds: [test.id] }) }, 'Push to Xray')));
+  const x = S.tm?.xray || {};
+  rail.append(h('div', { class: 'card tmRunCard' },
+    h('span', { class: 'lbl' }, 'Xray connection'),
+    h('div', { style: 'margin-top:8px' }, h('span', { class: 'tmStatus ' + (x.credentials?.hasClientId && x.credentials?.hasClientSecret ? 'ok' : 'warn') }, x.credentials?.source || 'not configured')),
+    h('small', { style: 'display:block;color:var(--dim);margin-top:6px' }, x.projectKey ? `Project ${x.projectKey}` : 'Set project and credentials in Settings.'),
+    h('button', { class: 'btn', onclick: testXrayConnection }, 'Test connection')));
+  rail.append(h('div', { class: 'card tmRunCard' },
+    h('span', { class: 'lbl' }, 'Danger zone'),
+    h('button', { class: 'btn danger', onclick: () => deleteManagedTest(test) }, 'Delete test')));
+  return rail;
+}
+async function runSingleManagedTest(test) {
+  try {
+    const r = await api('/api/tests/' + test.id + '/run', { method: 'POST', body: { env: S.envName } });
+    toast(r.passed ? 'Test passed' : 'Test failed', !r.passed);
+    await loadTestsState(); renderTestEditor(findTest(test.id));
+  } catch (e) { toast(e.message, true); }
+}
+async function runManagedTests(scope) {
+  try {
+    const r = await api('/api/tests/run', { method: 'POST', body: { env: S.envName, ...scope } });
+    toast(`Run complete: ${r.passed}/${r.executed} passed`, r.failed > 0);
+    await loadTestsState(); renderTestsView();
+  } catch (e) { toast(e.message, true); }
+}
 function reqRow(q) {
   return h('div', {
     class: 'reqRow' + (q.id === S.reqId ? ' on' : ''),

@@ -556,6 +556,9 @@ type XraySettings struct {
 	TestPlanKey string `json:"testPlanKey"`
 	TestSetKey  string `json:"testSetKey"`
 	CloudURL    string `json:"cloudUrl"` // override default; empty = Xray Cloud default
+	AuthURL     string `json:"authUrl"`  // override default auth endpoint
+	Labels      string `json:"labels"`
+	Component   string `json:"component"`
 
 	// JiraBaseURL/JiraEmail are needed for requirement-linking (plain Jira
 	// REST, not Xray's GraphQL API). Not secret — the API token that pairs

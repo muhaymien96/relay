@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/muhaymien96/relay/internal/adapters/tm"
+	"github.com/muhaymien96/relay/internal/adapters/xray"
 	"github.com/muhaymien96/relay/internal/assert"
 	"github.com/muhaymien96/relay/internal/dsl"
 	"github.com/muhaymien96/relay/internal/engine"
@@ -88,6 +89,20 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/import/openapi", s.handleImportOpenAPI)
 	mux.HandleFunc("GET /api/export", s.handleExport)
 
+	mux.HandleFunc("GET /api/tests/state", s.handleTestsState)
+	mux.HandleFunc("POST /api/tests", s.handleTestCreate)
+	mux.HandleFunc("POST /api/tests/run", s.handleTestsRun)
+	mux.HandleFunc("GET /api/tests/{id}", s.handleTestGet)
+	mux.HandleFunc("PUT /api/tests/{id}", s.handleTestUpdate)
+	mux.HandleFunc("DELETE /api/tests/{id}", s.handleTestDelete)
+	mux.HandleFunc("POST /api/tests/{id}/run", s.handleTestRun)
+	mux.HandleFunc("POST /api/test-folders", s.handleTestFolderCreate)
+	mux.HandleFunc("PATCH /api/test-folders/{id}", s.handleTestFolderUpdate)
+	mux.HandleFunc("DELETE /api/test-folders/{id}", s.handleTestFolderDelete)
+	mux.HandleFunc("POST /api/test-sets", s.handleTestSetCreate)
+	mux.HandleFunc("PUT /api/test-sets/{id}", s.handleTestSetUpdate)
+	mux.HandleFunc("DELETE /api/test-sets/{id}", s.handleTestSetDelete)
+
 	mux.HandleFunc("GET /api/xray/settings", s.handleXraySettingsGet)
 	mux.HandleFunc("PUT /api/xray/settings", s.handleXraySettingsPut)
 	mux.HandleFunc("PUT /api/xray/credentials", s.handleXrayCredentialsPut)
@@ -98,7 +113,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/xray/test-sets/{id}/create", s.handleXrayTestSetCreate)
 	mux.HandleFunc("POST /api/xray/push", s.handleXrayPush)
 	mux.HandleFunc("GET /api/xray/test", s.handleXrayTestGet)
-	mux.HandleFunc("POST /api/xray/test", s.handleXrayTestCreate)
+	mux.HandleFunc("POST /api/xray/test", s.handleXrayRequestTestCreate)
 	mux.HandleFunc("POST /api/xray/requirements/link", s.handleXrayRequirementsLink)
 	return mux
 }
@@ -742,6 +757,9 @@ func (s *Server) xrayConfig() (xray.Config, store.XraySettings, error) {
 	if xs.CloudURL != "" {
 		cfg.GQLURL = xs.CloudURL
 	}
+	if xs.AuthURL != "" {
+		cfg.AuthURL = xs.AuthURL
+	}
 	if xs.JiraBaseURL != "" {
 		cfg.JiraBaseURL = xs.JiraBaseURL
 	}
@@ -875,24 +893,26 @@ func (s *Server) handleXrayPush(w http.ResponseWriter, r *http.Request) {
 
 	started := time.Now()
 	var results []tm.TestResult
-	for _, tc := range tests {
-		if !tc.Enabled {
-			continue
-		}
-		run, execErr := s.runTestCaseValue(r.Context(), tc, in.Env, true)
+	for i := range requests {
+		req := &requests[i]
+		out, _, execErr := s.execute(r.Context(), req, in.Env, true)
 		status := tm.StatusPASS
 		comment := ""
+		var duration float64
+		var steps []tm.TestStep
 		if execErr != nil {
 			status = tm.StatusFAIL
 			comment = execErr.Error()
 		} else {
-			for _, st := range run.Steps {
-				if !st.Passed {
+			duration = out.Timing["total"]
+			steps = tmStepsFromSend(out)
+			for _, st := range steps {
+				if st.Status == tm.StatusFAIL {
 					status = tm.StatusFAIL
 					if comment != "" {
 						comment += "; "
 					}
-					comment += st.Message
+					comment += st.Comment
 				}
 			}
 		}
@@ -901,8 +921,8 @@ func (s *Server) handleXrayPush(w http.ResponseWriter, r *http.Request) {
 			Name:       req.Spec.Name,
 			Status:     status,
 			Comment:    comment,
-			DurationMs: run.DurationMs,
-			Steps:      tmStepsFromRun(run.Steps),
+			DurationMs: duration,
+			Steps:      steps,
 		})
 	}
 	if len(results) == 0 {
@@ -938,6 +958,35 @@ func (s *Server) handleXrayPush(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]string{"executionKey": key})
 }
 
+func tmStepsFromSend(out *sendResult) []tm.TestStep {
+	steps := make([]tm.TestStep, 0, len(out.Assertions)+len(out.ScriptTests))
+	for i, a := range out.Assertions {
+		status := tm.StatusPASS
+		if !a.Passed {
+			status = tm.StatusFAIL
+		}
+		steps = append(steps, tm.TestStep{
+			Name:    fmt.Sprintf("Assertion %d: %s", i+1, a.Type),
+			Type:    a.Type,
+			Status:  status,
+			Comment: a.Message,
+		})
+	}
+	for i, st := range out.ScriptTests {
+		status := tm.StatusPASS
+		if !st.Passed {
+			status = tm.StatusFAIL
+		}
+		steps = append(steps, tm.TestStep{
+			Name:    fmt.Sprintf("Script test %d: %s", i+1, st.Name),
+			Type:    "script",
+			Status:  status,
+			Comment: st.Error,
+		})
+	}
+	return steps
+}
+
 // handleXrayTestGet looks up an existing Xray test issue by key, used by
 // the "link existing test" traceability action to validate a key before
 // it's saved onto the request.
@@ -962,7 +1011,7 @@ func (s *Server) handleXrayTestGet(w http.ResponseWriter, r *http.Request) {
 
 // handleXrayTestCreate creates a new Xray test issue for a request and
 // saves the resulting key onto it.
-func (s *Server) handleXrayTestCreate(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleXrayRequestTestCreate(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		RequestID int64  `json:"requestId"`
 		Summary   string `json:"summary"`

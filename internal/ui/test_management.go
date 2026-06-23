@@ -584,16 +584,17 @@ func (s *Server) handleXrayTestCreate(w http.ResponseWriter, r *http.Request) {
 		httpError(w, 422, err)
 		return
 	}
-	issue, err := client.CreateTest(xray.TestInput{
-		ProjectKey: xs.ProjectKey, Summary: tc.Name, Description: "Created from Relay test management",
-		Labels: splitCSV(xs.Labels), Components: splitCSV(xs.Component), Priority: tc.Priority,
-		Steps: tmStepsFromAssertions(tc.Assertions),
+	key, err := client.CreateTest(tm.NewTest{
+		ProjectKey: xs.ProjectKey,
+		Summary:    tc.Name,
+		TestType:   "Manual",
+		Steps:      testStepsText(tc.Assertions),
 	})
 	if err != nil {
 		httpError(w, 502, err)
 		return
 	}
-	tc.XrayKey = issue.Key
+	tc.XrayKey = key
 	if xs.TestPlanKey != "" && tc.TestPlanKey == "" {
 		tc.TestPlanKey = xs.TestPlanKey
 	}
@@ -607,7 +608,7 @@ func (s *Server) handleXrayTestCreate(w http.ResponseWriter, r *http.Request) {
 	if tc.TestPlanKey != "" {
 		_ = client.AddTestsToTestPlan(tc.TestPlanKey, []string{tc.XrayKey})
 	}
-	writeJSON(w, map[string]any{"test": tc, "issue": issue})
+	writeJSON(w, map[string]any{"test": tc, "issue": xray.Issue{Key: key, Summary: tc.Name}})
 }
 
 func (s *Server) handleXrayLinkRequirements(w http.ResponseWriter, r *http.Request) {
@@ -719,6 +720,17 @@ func tmStepsFromAssertions(assertions []dsl.Assertion) []tm.TestStep {
 		})
 	}
 	return steps
+}
+
+func testStepsText(assertions []dsl.Assertion) string {
+	if len(assertions) == 0 {
+		return "Execute the Relay request and verify the response."
+	}
+	parts := make([]string, 0, len(assertions))
+	for i, a := range assertions {
+		parts = append(parts, fmt.Sprintf("%d. %s", i+1, assertionExpected(a)))
+	}
+	return strings.Join(parts, "\n")
 }
 
 func splitCSV(s string) []string {
