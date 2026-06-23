@@ -385,13 +385,20 @@ func (s *Store) TestSets() ([]TestSet, error) {
 		if err := rows.Scan(&ts.ID, &ts.Name, &ts.Description, &ts.XrayKey, &ts.TestPlanKey); err != nil {
 			return nil, err
 		}
-		ts.TestIDs, err = s.testSetIDs(ts.ID)
-		if err != nil {
-			return nil, err
-		}
 		out = append(out, ts)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	// Load the member test IDs only after the outer rows are fully drained.
+	// Issuing a nested query while these rows are still open would deadlock
+	// against the single-connection pool (SetMaxOpenConns(1)).
+	for i := range out {
+		if out[i].TestIDs, err = s.testSetIDs(out[i].ID); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
 }
 
 func (s *Store) TestSet(id int64) (*TestSet, error) {
@@ -435,16 +442,30 @@ func (s *Store) CreateTestSet(ts *TestSet) error {
 	if strings.TrimSpace(ts.Name) == "" {
 		return fmt.Errorf("test set needs a name")
 	}
-	res, err := s.db.Exec(`INSERT INTO test_sets (name, description, xray_key, test_plan_key) VALUES (?, ?, ?, ?)`,
+	// Insert the set and its membership in a single transaction so a failure
+	// linking tests cannot leave an orphaned, empty test set behind.
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(`INSERT INTO test_sets (name, description, xray_key, test_plan_key) VALUES (?, ?, ?, ?)`,
 		strings.TrimSpace(ts.Name), ts.Description, ts.XrayKey, ts.TestPlanKey)
 	if err != nil {
 		return err
 	}
-	ts.ID, err = res.LastInsertId()
+	id, err := res.LastInsertId()
 	if err != nil {
 		return err
 	}
-	return s.ReplaceTestSetTests(ts.ID, ts.TestIDs)
+	if err := replaceTestSetTestsTx(tx, id, ts.TestIDs); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	ts.ID = id
+	return nil
 }
 
 func (s *Store) UpdateTestSet(ts *TestSet) error {
@@ -454,11 +475,19 @@ func (s *Store) UpdateTestSet(ts *TestSet) error {
 	if strings.TrimSpace(ts.Name) == "" {
 		return fmt.Errorf("test set needs a name")
 	}
-	if _, err := s.db.Exec(`UPDATE test_sets SET name = ?, description = ?, xray_key = ?, test_plan_key = ? WHERE id = ?`,
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`UPDATE test_sets SET name = ?, description = ?, xray_key = ?, test_plan_key = ? WHERE id = ?`,
 		strings.TrimSpace(ts.Name), ts.Description, ts.XrayKey, ts.TestPlanKey, ts.ID); err != nil {
 		return err
 	}
-	return s.ReplaceTestSetTests(ts.ID, ts.TestIDs)
+	if err := replaceTestSetTestsTx(tx, ts.ID, ts.TestIDs); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) DeleteTestSet(id int64) error {
@@ -478,15 +507,28 @@ func (s *Store) ReplaceTestSetTests(setID int64, testIDs []int64) error {
 		return err
 	}
 	defer tx.Rollback()
+	if err := replaceTestSetTestsTx(tx, setID, testIDs); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// replaceTestSetTestsTx rewrites a test set's membership inside an existing
+// transaction. The SELECT-guarded insert skips test IDs that don't exist
+// instead of raising a foreign-key error, so stale IDs from the client are
+// dropped gracefully rather than failing the whole operation.
+func replaceTestSetTestsTx(tx *sql.Tx, setID int64, testIDs []int64) error {
 	if _, err := tx.Exec(`DELETE FROM test_set_tests WHERE test_set_id = ?`, setID); err != nil {
 		return err
 	}
 	for _, id := range testIDs {
-		if _, err := tx.Exec(`INSERT OR IGNORE INTO test_set_tests (test_set_id, test_id) VALUES (?, ?)`, setID, id); err != nil {
+		if _, err := tx.Exec(
+			`INSERT OR IGNORE INTO test_set_tests (test_set_id, test_id) SELECT ?, id FROM test_cases WHERE id = ?`,
+			setID, id); err != nil {
 			return err
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 
 func (s *Store) AddTestRun(run *TestRun) error {
