@@ -105,14 +105,31 @@
   #urlRow { display: flex; gap: 8px; padding: 12px; align-items: center; }
   #method { font-family: var(--mono); font-weight: 700; width: 96px; }
   #url { flex: 1; font-family: var(--mono); font-size: 13px; }
-  #url.var-active, textarea.body.var-active {
-    border-color: #e1b244;
-    background: #fff9e9;
+  .reqHead { padding: 12px 12px 0; display: flex; align-items: center; gap: 8px; }
+  .urlField { flex: 1; }
+  .varField { position: relative; min-width: 0; font-family: var(--mono); }
+  .varField input, .varField textarea {
+    position: relative; z-index: 2; width: 100%; font-family: inherit;
+    background: transparent !important; color: transparent !important;
+    caret-color: var(--fg); -webkit-text-fill-color: transparent;
   }
-  table.kv input.var-active, table.formData input.var-active {
-    background: #fff9e9;
-    border-radius: 4px;
+  .varField input::selection, .varField textarea::selection {
+    background: rgba(40,40,122,.18); -webkit-text-fill-color: transparent;
   }
+  .varField input::placeholder, .varField textarea::placeholder {
+    color: var(--faint); -webkit-text-fill-color: var(--faint);
+  }
+  .varMirror {
+    position: absolute; inset: 0; z-index: 1; pointer-events: none;
+    overflow: hidden; white-space: pre; color: var(--fg); font: inherit;
+    padding: 6px 9px; border: 1px solid transparent; border-radius: 7px;
+  }
+  .varField textarea + .varMirror, .varTextArea .varMirror {
+    white-space: pre; overflow-wrap: normal; line-height: 1.6;
+  }
+  .varField.has-vars input, .varField.has-vars textarea { border-color: #d49b17; }
+  table.kv .varMirror, table.formData .varMirror { padding: 4px 2px; border: 0; }
+  table.kv .varField input, table.formData .varField input { border: 0; padding: 4px 2px; }
   .varChips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 2px; }
   .varChip {
     display: inline-flex; align-items: center; gap: 6px;
@@ -124,10 +141,11 @@
   .varScope { font-size: 10px; opacity: .75; font-family: "Inter", system-ui, sans-serif; }
   #reqName { border: 0; font-weight: 700; font-size: 14px; width: 100%; padding: 0 0 2px; }
   #reqName:focus { outline: none; border-bottom: 1px dashed var(--ink); }
-  .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); padding: 0 12px; }
-  .tabs button { border: 0; background: none; padding: 9px 12px; color: var(--dim); font-weight: 600;
-                 border-bottom: 2px solid transparent; }
-  .tabs button.on { color: var(--fg); border-bottom-color: var(--ink); }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); padding: 0 12px; overflow-x: auto; }
+  .tabs button { border: 0; background: none; padding: 10px 10px 8px; color: var(--dim); font-weight: 600;
+                 border-bottom: 2px solid transparent; white-space: nowrap; }
+  .tabs button:hover { color: var(--ink); }
+  .tabs button.on { color: var(--fg); border-bottom-color: var(--ink); background: #fafbfe; }
   .tabs button .n { background: var(--ink-soft); color: var(--ink); border-radius: 99px; font-size: 10px;
                     padding: 0 6px; margin-left: 4px; }
   .tabBody { padding: 12px; min-width: 0; max-width: 100%; overflow: hidden; }
@@ -145,7 +163,7 @@
   .addRow { margin-top: 8px; border: 1px dashed var(--line2); background: none; color: var(--dim);
             width: 100%; padding: 7px; border-radius: 7px; }
   .addRow:hover { color: var(--ink); border-color: var(--ink); }
-  textarea.body { display: block; width: 100%; max-width: 100%; min-height: 220px;
+  textarea.body, .varTextArea textarea { display: block; width: 100%; max-width: 100%; min-height: 220px;
                   font-family: var(--mono); font-size: 12.5px; resize: vertical;
                   line-height: 1.6; white-space: pre; overflow: auto; }
   .bodyToolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
@@ -163,7 +181,7 @@
   table.formData input[type=checkbox] { margin: 0; }
   .formRow { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
   .formRow label { width: 110px; color: var(--dim); font-weight: 600; }
-  .formRow input, .formRow select { flex: 1; max-width: 420px; }
+  .formRow input, .formRow select, .formRow .varField { flex: 1; max-width: 420px; }
 
   /* response */
   #respMeta { display: flex; gap: 16px; align-items: baseline; padding: 10px 14px;
@@ -227,7 +245,9 @@
   .json-n { color: #005cc5; }
   .json-b { color: #d73a49; }
   .json-null { color: #d73a49; }
-  .var-token { background: #ffe9b5; color: #7c4f00; border-radius: 3px; padding: 0 1px; }
+  .var-token { background: #ffe9b5; color: #6f4700; border: 1px solid #e7bd5f; border-radius: 4px; padding: 0 2px; font-weight: 700; }
+  .var-token.missing { background: #fdeeee; color: #9a2f2f; border-color: #efb4b4; }
+  .var-token.secret { background: #f3eefe; color: #4f3295; border-color: #cfbef4; }
   .scriptLineNums {
     position: absolute; left: 0; top: 0; width: 44px; padding: 12px 8px;
     text-align: right; font: inherit; color: var(--faint); line-height: 1.6;
@@ -887,7 +907,6 @@ function resolvedValueForVar(name) {
 function renderVarChips(text, { title = 'Variables' } = {}) {
   const names = extractVariables(text);
   if (!names.length) return null;
-  const known = collectScopeVars();
   const chips = h('div', { class: 'varChips', 'aria-label': title });
   for (const n of names) {
     const src = sourceForVar(n);
@@ -905,15 +924,50 @@ function renderVarChips(text, { title = 'Variables' } = {}) {
   return chips;
 }
 
-function decorateVarInput(inputEl) {
+function varTokenHTML(name) {
+  const src = sourceForVar(name);
+  const cls = 'var-token' + (src === 'unresolved' ? ' missing' : '') + (src === 'secret' ? ' secret' : '');
+  return `<span class="${cls}">{{${escHtml(name)}}}</span>`;
+}
+
+function highlightVariables(text) {
+  return escHtml(text).replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (_, raw) => {
+    const name = raw.trim();
+    return varTokenHTML(name);
+  });
+}
+
+function decorateVarInput(inputEl, mirrorEl = null, wrapEl = null) {
   const refresh = () => {
     const hasVars = /\{\{[^{}]+\}\}/.test(inputEl.value || '');
     inputEl.classList.toggle('var-active', hasVars);
+    if (wrapEl) wrapEl.classList.toggle('has-vars', hasVars);
+    if (mirrorEl) mirrorEl.innerHTML = highlightVariables(inputEl.value || '') + (inputEl.tagName === 'TEXTAREA' ? '\n' : '');
     inputEl.title = hasVars ? 'Contains {{variables}}. See chips below for resolved values.' : '';
+  };
+  const syncScroll = () => {
+    if (!mirrorEl) return;
+    mirrorEl.scrollTop = inputEl.scrollTop || 0;
+    mirrorEl.scrollLeft = inputEl.scrollLeft || 0;
   };
   inputEl.addEventListener('input', refresh);
   inputEl.addEventListener('change', refresh);
+  inputEl.addEventListener('scroll', syncScroll);
   refresh();
+  syncScroll();
+}
+
+function varField(tag, attrs = {}, ...kids) {
+  const cls = attrs.class || '';
+  const wrap = h('div', { class: 'varField' + (tag === 'textarea' ? ' varTextArea' : '') + (cls ? ' ' + cls : '') });
+  const editAttrs = { ...attrs, class: 'varEdit' };
+  if (tag === 'textarea') editAttrs.spellcheck = attrs.spellcheck ?? 'false';
+  else editAttrs.spellcheck = attrs.spellcheck ?? 'false';
+  const edit = h(tag, editAttrs, ...kids);
+  const mirror = h('div', { class: 'varMirror', 'aria-hidden': 'true' });
+  wrap.append(edit, mirror);
+  decorateVarInput(edit, mirror, wrap);
+  return wrap;
 }
 
 async function moveRequestTo(reqId, collectionId, folderId = null) {
@@ -2296,14 +2350,10 @@ function kvTable(obj, { onchange, secretKeys } = {}) {
     onchange(next);
   };
   const addRow = (k = '', v = '') => {
-    let keyInput;
-    let valueInput;
     const tr = h('tr', { 'data-row': 1 },
-      h('td', {}, keyInput = h('input', { type: 'text', value: k, placeholder: 'Key', onchange: sync })),
-      h('td', {}, valueInput = h('input', { type: 'text', value: v, placeholder: 'Value', onchange: sync })),
+      h('td', {}, varField('input', { type: 'text', value: k, placeholder: 'Key', onchange: sync })),
+      h('td', {}, varField('input', { type: 'text', value: v, placeholder: 'Value', onchange: sync })),
       h('td', {}, h('button', { class: 'delRow', onclick: () => { tr.remove(); sync(); } }, '✕')));
-    decorateVarInput(keyInput);
-    decorateVarInput(valueInput);
     table.append(tr);
   };
   rows.forEach(([k, v]) => addRow(k, v));
@@ -2330,7 +2380,7 @@ function inheritedHeaderRows() {
   const table = h('table', { class: 'kv' },
     h('tr', {}, h('th', { style: 'width:34%' }, 'Inherited'), h('th', {}, 'Value'), h('th', {}, 'From')));
   for (const [k, v, o] of rows)
-    table.append(h('tr', { class: 'inherited' }, h('td', {}, k), h('td', {}, esc(v)),
+    table.append(h('tr', { class: 'inherited' }, h('td', { html: highlightVariables(k) }), h('td', { html: highlightVariables(v) }),
       h('td', {}, h('span', { class: 'origin' }, o))));
   return h('div', { style: 'margin-bottom:12px' }, table,
     h('div', { style: 'color:var(--faint);font-size:11px;margin-top:4px' },
@@ -2349,14 +2399,14 @@ function renderRequest() {
   setReqDirty(false);
 
   const editor = h('div', { class: 'card' },
-    h('div', { style: 'padding:12px 12px 0;display:flex;align-items:center;gap:8px' },
+    h('div', { class: 'reqHead' },
       h('input', { id: 'reqName', value: spec.name, onchange: (e) => { spec.name = e.target.value; setReqDirty(true); save(); } }),
       h('button', { class: 'iconBtn', id: 'saveReqBtn', title: 'Save request now', onclick: () => saveRequest(true) }, 'Save'),
       h('button', { class: 'iconBtn', title: 'Delete request', onclick: deleteRequest }, '🗑')),
     h('div', { id: 'urlRow' },
       h('select', { id: 'method', onchange: (e) => { spec.method = e.target.value; setReqDirty(true); save(); } },
         METHODS.map(m => h('option', { value: m, selected: spec.method === m ? '' : undefined }, m))),
-      h('input', { id: 'url', value: spec.url, placeholder: 'https://{{baseUrl}}/path',
+      varField('input', { class: 'urlField', id: 'url', value: spec.url, placeholder: 'https://{{baseUrl}}/path',
         oninput: (e) => { spec.url = e.target.value; setReqDirty(true); save(); } }),
       h('button', { class: 'btn dark', id: 'sendBtn', onclick: send }, 'Send'),
     ),
@@ -2368,8 +2418,6 @@ function renderRequest() {
         t === 'scripts' && (spec.scripts?.preRequest || spec.scripts?.tests) ? h('span', { class: 'n' }, '●') : ''))),
     h('div', { class: 'tabBody', id: 'tabBody' }));
   work.append(editor);
-  const urlInput = editor.querySelector('#url');
-  decorateVarInput(urlInput);
   const urlVarWrap = editor.querySelector('#urlVarWrap');
   const urlChips = renderVarChips(spec.url || '', { title: 'URL variables' });
   if (urlChips) urlVarWrap.append(urlChips);
@@ -2394,18 +2442,18 @@ function renderRequest() {
         ['', 'bearer', 'basic', 'apikey'].map(t => h('option', { value: t, selected: (auth.type || '') === t ? '' : undefined }, t || 'none')))));
     if (auth.type === 'bearer')
       tb.append(h('div', { class: 'formRow' }, h('label', {}, 'Token'),
-        h('input', { type: 'text', value: auth.token || '', placeholder: '{{apiToken}}', onchange: (e) => set('token', e.target.value) })));
+        varField('input', { type: 'text', value: auth.token || '', placeholder: '{{apiToken}}', onchange: (e) => set('token', e.target.value) })));
     if (auth.type === 'basic') {
       tb.append(h('div', { class: 'formRow' }, h('label', {}, 'Username'),
-        h('input', { type: 'text', value: auth.username || '', onchange: (e) => set('username', e.target.value) })));
+        varField('input', { type: 'text', value: auth.username || '', onchange: (e) => set('username', e.target.value) })));
       tb.append(h('div', { class: 'formRow' }, h('label', {}, 'Password'),
-        h('input', { type: 'text', value: auth.password || '', placeholder: '{{password}}', onchange: (e) => set('password', e.target.value) })));
+        varField('input', { type: 'text', value: auth.password || '', placeholder: '{{password}}', onchange: (e) => set('password', e.target.value) })));
     }
     if (auth.type === 'apikey') {
       tb.append(h('div', { class: 'formRow' }, h('label', {}, 'Header/param'),
-        h('input', { type: 'text', value: auth.key || '', placeholder: 'X-Api-Key', onchange: (e) => set('key', e.target.value) })));
+        varField('input', { type: 'text', value: auth.key || '', placeholder: 'X-Api-Key', onchange: (e) => set('key', e.target.value) })));
       tb.append(h('div', { class: 'formRow' }, h('label', {}, 'Value'),
-        h('input', { type: 'text', value: auth.value || '', placeholder: '{{apiKey}}', onchange: (e) => set('value', e.target.value) })));
+        varField('input', { type: 'text', value: auth.value || '', placeholder: '{{apiKey}}', onchange: (e) => set('value', e.target.value) })));
       tb.append(h('div', { class: 'formRow' }, h('label', {}, 'In'),
         h('select', { onchange: (e) => set('in', e.target.value) },
           ['header', 'query'].map(t => h('option', { value: t, selected: (auth.in || 'header') === t ? '' : undefined }, t)))));
@@ -2434,9 +2482,8 @@ function renderRequest() {
     } else {
       const bodyChips = renderVarChips(body.content || '', { title: 'Body variables' });
       if (bodyChips) tb.append(bodyChips);
-      const rawBody = h('textarea', { class: 'body', placeholder: '{ "id": "{{testIdNumber}}" }',
-        oninput: (e) => updateBodyContent(body, e.target.value, save) }, body.content || '');
-      decorateVarInput(rawBody);
+      const rawBody = varField('textarea', { class: 'body', value: body.content || '', placeholder: '{ "id": "{{testIdNumber}}" }',
+        oninput: (e) => updateBodyContent(body, e.target.value, save) });
       tb.append(rawBody);
     }
   } else if (S.tab === 'assertions') {
@@ -2509,7 +2556,7 @@ function highlightJS(code) {
 
 function highlightJSON(code) {
   const escape = (s) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  const markVars = (s) => s.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, '<span class="var-token">{{$1}}</span>');
+  const markVars = (s) => s.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (_, raw) => varTokenHTML(raw.trim()));
   const tokens = [];
   let i = 0;
   while (i < code.length) {
@@ -2650,13 +2697,14 @@ function formDataEditor(body, save) {
     let valueInput;
     const tr = h('tr', { 'data-row': 1 },
       h('td', {}, h('input', { type: 'checkbox', checked: !field.disabled, onchange: sync })),
-      h('td', {}, h('input', { type: 'text', 'data-field': 'key', value: field.key || '', placeholder: 'field', oninput: sync })),
+      h('td', {}, varField('input', { type: 'text', 'data-field': 'key', value: field.key || '', placeholder: 'field', oninput: sync })),
       h('td', {}, h('select', { 'data-field': 'type', onchange: (e) => {
         valueInput.placeholder = e.target.value === 'file' ? './upload.pdf' : 'value';
         sync();
       } }, ['text', 'file'].map(t => h('option', { value: t, selected: (field.type || 'text') === t ? '' : undefined }, t)))),
-      h('td', {}, valueInput = h('input', { type: 'text', 'data-field': 'value', value: field.type === 'file' ? (field.file || '') : (field.value || ''), placeholder: field.type === 'file' ? './upload.pdf' : 'value', oninput: sync })),
+      h('td', {}, varField('input', { type: 'text', 'data-field': 'value', value: field.type === 'file' ? (field.file || '') : (field.value || ''), placeholder: field.type === 'file' ? './upload.pdf' : 'value', oninput: sync })),
       h('td', {}, h('button', { class: 'delRow', onclick: () => { tr.remove(); sync(); } }, '✕')));
+    valueInput = tr.querySelector('[data-field=value]');
     table.append(tr);
   };
   fields.forEach(addRow);
