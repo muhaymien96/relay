@@ -284,6 +284,32 @@ func (s *Server) runTestCaseValue(ctx context.Context, tc store.TestCase, env st
 
 func cloneRequestForTest(req *store.Request, tc store.TestCase) *store.Request {
 	spec := *req.Spec
+	if tc.Request != nil {
+		if tc.Request.Name != "" {
+			spec.Name = tc.Request.Name
+		}
+		if tc.Request.Method != "" {
+			spec.Method = strings.ToUpper(tc.Request.Method)
+		}
+		if tc.Request.URL != "" {
+			spec.URL = tc.Request.URL
+		}
+		if tc.Request.Query != nil {
+			spec.Query = copyMap(tc.Request.Query)
+		}
+		if tc.Request.Headers != nil {
+			spec.Headers = copyMap(tc.Request.Headers)
+		}
+		if tc.Request.Auth != nil {
+			auth := *tc.Request.Auth
+			spec.Auth = &auth
+		}
+		if tc.Request.Body != nil {
+			body := *tc.Request.Body
+			body.FormData = append([]dsl.FormField(nil), tc.Request.Body.FormData...)
+			spec.Body = &body
+		}
+	}
 	spec.Name = tc.Name
 	spec.Tags = append([]string(nil), tc.Tags...)
 	spec.Owner = tc.Owner
@@ -301,6 +327,17 @@ func cloneRequestForTest(req *store.Request, tc store.TestCase) *store.Request {
 	cp := *req
 	cp.Spec = &spec
 	return &cp
+}
+
+func copyMap(in map[string]string) map[string]string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }
 
 func stepsFromSend(tc store.TestCase, out *sendResult) []store.TestStepResult {
@@ -582,6 +619,34 @@ func (s *Server) handleXrayTestCreate(w http.ResponseWriter, r *http.Request) {
 	client, err := s.xrayClient()
 	if err != nil {
 		httpError(w, 422, err)
+		return
+	}
+	if tc.XrayKey != "" {
+		ref, err := client.GetTest(tc.XrayKey)
+		if err != nil {
+			httpError(w, 502, err)
+			return
+		}
+		if ref == nil {
+			httpError(w, 404, fmt.Errorf("%s not found in Xray", tc.XrayKey))
+			return
+		}
+		if err := client.UpdateTest(*ref, tm.NewTest{
+			ProjectKey: xs.ProjectKey,
+			Summary:    tc.Name,
+			TestType:   "Manual",
+			Steps:      testStepsText(tc.Assertions),
+		}); err != nil {
+			httpError(w, 502, err)
+			return
+		}
+		if len(tc.Requirements) > 0 {
+			_ = client.LinkRequirements(tc.XrayKey, tc.Requirements)
+		}
+		if tc.TestPlanKey != "" {
+			_ = client.AddTestsToTestPlan(tc.TestPlanKey, []string{tc.XrayKey})
+		}
+		writeJSON(w, map[string]any{"test": tc, "issue": xray.Issue{Key: tc.XrayKey, Summary: tc.Name}, "updated": true})
 		return
 	}
 	key, err := client.CreateTest(tm.NewTest{

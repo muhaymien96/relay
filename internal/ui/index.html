@@ -385,6 +385,91 @@
   .tmStep { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; padding: 7px 9px;
             border: 1px solid var(--line); border-radius: 8px; }
   .tmStep small { color: var(--dim); word-break: break-word; }
+
+  /* handoff-aligned test management surface */
+  body.tmMode #app { overflow-x: auto; }
+  body.tmMode #side { width: 248px; flex: none; }
+  body.tmMode #main { min-width: 650px; }
+  body.tmMode #work { min-width: 420px; align-content: flex-start; }
+  body.tmMode #meta { display: block; width: 260px; flex: none; }
+  body.tmMode #sideHead { display: block; padding: 14px 14px 8px; }
+  body.tmMode #sideHead button { display: none; }
+  .tmSuiteTools { padding: 0 8px 8px; display: flex; gap: 8px; }
+  .tmSuiteTools .btn { flex: 1; padding: 5px 10px; font-size: 12px; }
+  .tmSearchWrap { padding: 0 12px 8px; }
+  .tmSearchWrap input { width: 100%; font-size: 12px; padding: 6px 9px; }
+  .tmFilterChips { display: flex; flex-wrap: wrap; gap: 5px; padding: 2px 12px 8px; border-bottom: 1px solid var(--line); }
+  .tmFilterChips .fchip { font-size: 10.5px; border: 1px solid var(--line2); background: #fff; color: var(--dim);
+    border-radius: 99px; padding: 2px 9px; font-weight: 600; display: inline-flex; gap: 5px; align-items: center; white-space: nowrap; }
+  .tmFilterChips .fchip.on { background: var(--ink-soft); border-color: var(--ink); color: var(--ink); }
+  .tmFilterChips .fchip .c { font-family: var(--mono); font-size: 9.5px; opacity: .8; }
+  .tmTreeCount { margin-left: auto; font-family: var(--mono); font-size: 9.5px; color: var(--faint); }
+  .tmTestTreeRow { display: flex; align-items: center; gap: 7px; padding: 5px 8px 5px 22px; border-radius: 7px;
+    cursor: pointer; color: var(--fg); }
+  .tmTestTreeRow:hover, .tmTestTreeRow.on { background: var(--ink-soft); }
+  .tmTestTreeRow.on { outline: 1px dashed var(--ink); }
+  .tmTestTreeRow .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  .tmTopBtn { white-space: nowrap; }
+  .tmPanel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; flex: none; }
+  body.tmMode #work { background:
+    linear-gradient(180deg, rgba(40,40,122,.035), transparent 210px),
+    radial-gradient(circle at 18px 18px, rgba(40,40,122,.08) 1px, transparent 1.5px);
+    background-size: auto, 22px 22px; }
+  .tmPanel { box-shadow: 0 10px 28px rgba(28,31,51,.045); }
+  .tmPanel:hover { border-color: #d7daea; }
+  .tmSecHd { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line);
+    font-size: 10px; letter-spacing: .08em; color: var(--dim); font-weight: 700; text-transform: uppercase; }
+  .tmSecHd .n { background: var(--ink-soft); color: var(--ink); border-radius: 99px; padding: 0 7px; font-size: 10px; letter-spacing: 0; }
+  .tmSecHd .grow { flex: 1; }
+  .tmSecBody { padding: 12px 14px; }
+  .tmIdTop { display: flex; align-items: center; gap: 10px; }
+  .tmTestName { border: 0; font-weight: 700; font-size: 15px; flex: 1; padding: 0 0 2px; min-width: 0; }
+  .tmTestName:focus { outline: none; border-bottom: 1px dashed var(--ink); }
+  .tmIdGrid, .tmTraceGrid { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 14px; align-items: center; }
+  .tmIdGrid { margin-top: 12px; }
+  .tmKey { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); font-weight: 700; align-self: center; }
+  .tmSrcPill { font-family: var(--mono); font-size: 11px; color: var(--dim); border: 1px solid var(--line2);
+    background: #fafbfe; border-radius: 99px; padding: 2px 4px 2px 9px; display: inline-flex; gap: 6px;
+    align-items: center; cursor: help; max-width: 100%; }
+  .tmSrcPill .pathtxt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 2.5em; flex: 1 1 auto; }
+  .tmSrcPill .sot { font-family: "Inter", system-ui, sans-serif; font-size: 9px; letter-spacing: .03em;
+    color: var(--ink); background: var(--ink-soft); border-radius: 99px; padding: 1px 7px; font-weight: 700; flex: none; }
+  .tmTagChip { font-size: 11px; border-radius: 99px; padding: 2px 4px 2px 10px; font-weight: 600;
+    background: var(--ink-soft); color: var(--ink); display: inline-flex; align-items: center; gap: 4px; }
+  .tmAddTag { font-size: 11px; border: 1px dashed var(--line2); background: none; color: var(--dim);
+    border-radius: 99px; padding: 2px 10px; font-weight: 600; }
+  .tmInline { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .prio.med { background: #fdf3e6; color: var(--amber); }
+  .tmToggle { position: relative; width: 34px; height: 19px; border-radius: 99px; background: var(--line2); border: 0; padding: 0; flex: none; transition: background .15s; }
+  .tmToggle::after { content: ""; position: absolute; top: 2px; left: 2px; width: 15px; height: 15px; border-radius: 99px; background: #fff; transition: transform .15s; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+  .tmToggle.on { background: var(--green); }
+  .tmToggle.on::after { transform: translateX(15px); }
+  .tmCoverage { display: flex; align-items: stretch; margin-top: 14px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .tmCovNode { flex: 1; padding: 10px 14px; display: flex; flex-direction: column; gap: 3px; position: relative; }
+  .tmCovNode + .tmCovNode { border-left: 1px solid var(--line); }
+  .tmCovNode .lbl { font-size: 9px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); font-weight: 700; }
+  .tmCovNode .val { font-family: var(--mono); font-size: 12.5px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  .tmCovNode.good { background: #f3fbf7; } .tmCovNode.good .val { color: var(--green); }
+  .tmCovNode.bad { background: #fdf4f4; } .tmCovNode.bad .val { color: var(--red); }
+  .tmCovNode.gap { background: repeating-linear-gradient(45deg, #fafbfe, #fafbfe 6px, #f1f2f9 6px, #f1f2f9 12px); }
+  .tmRunMeta { display: flex; gap: 18px; align-items: baseline; padding: 11px 14px; border-bottom: 1px solid var(--line);
+    font-family: var(--mono); font-size: 12.5px; flex-wrap: wrap; }
+  .tmRunMeta .lbl { font-size: 9.5px; letter-spacing: .1em; color: var(--dim); font-weight: 700; font-family: "Inter", system-ui, sans-serif; }
+  .tmMetaCard { border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin-bottom: 12px; }
+  .tmMetaCard .lbl { font-size: 9.5px; letter-spacing: .1em; color: var(--dim); font-weight: 700; text-transform: uppercase; display: block; margin-bottom: 6px; }
+  .tmMetaCard .btn { width: 100%; margin-top: 8px; }
+  .tmScopeChips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tmScopeChips .att { border: 1px solid var(--line2); border-radius: 99px; padding: 3px 10px; font-size: 11px; font-weight: 600; background: #fff; }
+  .tmScopeChips .att.on { background: var(--ink-soft); border-color: var(--ink); color: var(--ink); }
+  .tmFullBtn { width: 100%; }
+  .tmRequestGrid { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 10px; align-items: center; }
+  .tmRequestGrid textarea { width: 100%; min-height: 180px; font-family: var(--mono); line-height: 1.55; resize: vertical; }
+  .tmRequestGrid input, .tmRequestGrid select { width: 100%; min-width: 0; }
+  .tmHeaderTable { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  .tmHeaderTable th { text-align: left; font-size: 10px; letter-spacing: .08em; color: var(--dim); text-transform: uppercase; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+  .tmHeaderTable td { padding: 5px 6px; border-bottom: 1px solid var(--line); }
+  .tmHeaderTable input { width: 100%; border: 0; background: transparent; font-family: var(--mono); padding: 4px 2px; }
+  .tmCodePreview { font-family: var(--mono); font-size: 12px; line-height: 1.6; white-space: pre-wrap; background: #fafbfe; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; max-height: 360px; overflow: auto; }
   @media (max-width: 1120px) {
     .tmEditor { grid-template-columns: minmax(0, 1fr); }
     .tmSide { position: static; }
@@ -853,6 +938,7 @@ document.querySelectorAll('.navItem[data-view]').forEach(b => b.onclick = async 
 });
 
 function renderSide() {
+  if (S.view !== 'tests') renderTestsTopbar();
   const list = $('sideList'); list.innerHTML = '';
   const titles = { collections: 'COLLECTIONS', history: 'HISTORY', environments: 'ENVIRONMENTS', presets: 'HEADER PRESETS', settings: 'SETTINGS', tests: 'TEST MANAGEMENT' };
   $('sideTitle').textContent = titles[S.view];
@@ -1319,16 +1405,19 @@ function showTestFolderCtx(e, folder) {
 
 /* ---------- stable first-class test management overrides ---------- */
 async function renderTestsView() {
+  document.body.classList.add('tmMode');
   $('meta').hidden = true;
   $('crumb').innerHTML = '';
-  $('crumb').append('Workspace / ', h('b', {}, 'Test Management'));
+  $('crumb').append('AML', h('span', { class: 'sep' }, ' / '), h('b', {}, 'Test Management'));
+  renderTestsTopbar();
   const work = $('work');
   work.innerHTML = '<div class="empty">Loading Test Management…</div>';
   try {
     await loadTestsState();
     renderSide();
-    if (S.testId && findTest(S.testId)) await openTest(S.testId);
-    else renderTestsDashboard();
+    const first = S.testId && findTest(S.testId) ? findTest(S.testId) : filteredManagedTests()[0] || allManagedTests()[0];
+    if (first) await openTest(first.id);
+    else renderEmptyTestManagement();
   } catch (e) {
     work.innerHTML = '';
     work.append(h('div', { class: 'empty' },
@@ -1336,6 +1425,33 @@ async function renderTestsView() {
       h('div', { style: 'margin-top:8px;color:var(--dim)' }, e.message || String(e))));
     toast(e.message || String(e), true);
   }
+}
+function renderTestsTopbar(test) {
+  document.body.classList.toggle('tmMode', S.view === 'tests');
+  const top = $('topbar');
+  top.querySelectorAll('.tmTopBtn').forEach(n => n.remove());
+  const imp = $('importBtn'), exp = $('exportBtn'), env = $('envSel');
+  if (S.view !== 'tests') {
+    if (imp) imp.hidden = false;
+    if (exp) exp.hidden = false;
+    if (env) env.hidden = false;
+    return;
+  }
+  if (imp) imp.hidden = true;
+  if (exp) exp.hidden = true;
+  if (env) env.hidden = false;
+  top.append(
+    h('button', { class: 'btn sm tmTopBtn', onclick: () => createManagedTest() }, '+ New test'),
+    h('button', { class: 'btn sm tmTopBtn', disabled: test ? undefined : 'true', onclick: () => test && duplicateManagedTest(test) }, 'Duplicate'),
+    h('button', { class: 'btn dark sm tmTopBtn', id: 'runBtn', disabled: test ? undefined : 'true', onclick: () => test && runManagedScope() }, 'Run'));
+}
+function renderEmptyTestManagement() {
+  const work = $('work'); work.innerHTML = '';
+  $('meta').hidden = true;
+  work.append(h('div', { class: 'tmPanel empty' },
+    h('b', {}, 'No tests yet'),
+    h('div', { style: 'margin-top:8px' }, 'Create a request, then add a test from the suite tree.'),
+    h('button', { class: 'btn dark', style: 'margin-top:14px', onclick: () => createManagedTest() }, '+ New test')));
 }
 async function loadTestsState() {
   S.tm = await api('/api/tests/state');
@@ -1379,20 +1495,28 @@ function filteredManagedTests() {
   });
 }
 function renderTestsSide(list) {
-  list.append(h('div', { class: 'tmListHead' },
-    h('button', { class: 'btn dark', onclick: () => createManagedTest() }, '+ Test'),
-    h('button', { class: 'btn', onclick: () => createTestFolder() }, '+ Folder')));
+  $('sideTitle').textContent = 'SUITE';
+  list.append(h('div', { class: 'tmSuiteTools' },
+    h('button', { class: 'btn dark', onclick: () => createManagedTest() }, '+ New test'),
+    h('button', { class: 'btn', onclick: () => createTestSet() }, '+ Set')));
   list.append(h('div', { style: 'padding:0 8px 8px' },
     h('input', { type: 'text', placeholder: 'Search tests, endpoints, Xray…', style: 'width:100%', value: S.testSearch || '',
       oninput: (e) => { S.testSearch = e.target.value; renderSide(); } })));
-  const chipDefs = [['failed', 'Failed last run'], ['noxray', 'No Xray'], ['hasassert', 'Has steps'], ['tagged', 'Tagged'], ['disabled', 'Disabled']];
-  const chips = h('div', { class: 'chips', style: 'padding:0 8px 10px' });
+  const chipDefs = [['failed', 'Failed'], ['noxray', 'No Xray link'], ['hasassert', 'Has assertions'], ['disabled', 'Disabled']];
+  const chips = h('div', { class: 'tmFilterChips' });
   S.testChips = S.testChips || [];
   for (const [key, label] of chipDefs) {
     const on = S.testChips.includes(key);
-    chips.append(h('button', { class: 'att' + (on ? ' on' : ''), style: 'font-size:11px;padding:2px 9px', onclick: () => {
+    const count = allManagedTests().filter(t => {
+      if (key === 'failed') return testPassed(t) === false;
+      if (key === 'noxray') return !t.xrayKey;
+      if (key === 'hasassert') return (t.assertions || []).length || t.scriptTests;
+      if (key === 'disabled') return !t.enabled;
+      return false;
+    }).length;
+    chips.append(h('button', { class: 'fchip' + (on ? ' on' : ''), onclick: () => {
       S.testChips = on ? S.testChips.filter(x => x !== key) : [...S.testChips, key]; renderSide();
-    } }, label));
+    } }, label, h('span', { class: 'c' }, String(count))));
   }
   list.append(chips);
   const tests = filteredManagedTests();
@@ -1430,7 +1554,7 @@ function testSideRow(t) {
   const req = findReqInTests(t.requestId);
   const passed = testPassed(t);
   return h('div', {
-    class: 'tmTestRow' + (String(t.id) === String(S.testId) ? ' on' : ''),
+    class: 'tmTestTreeRow' + (String(t.id) === String(S.testId) ? ' on' : ''),
     draggable: 'true',
     onclick: () => openTest(t.id),
     ondragstart: (e) => { e.currentTarget.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/test-id', String(t.id)); },
@@ -1438,9 +1562,10 @@ function testSideRow(t) {
     oncontextmenu: (e) => { e.preventDefault(); e.stopPropagation(); showManagedTestCtx(e, t); },
     title: 'Drag to a folder or right-click for test actions',
   },
+    h('span', { class: 'lastDot ' + (passed === false ? 'fail' : passed === true ? 'pass' : 'never') }),
     h('span', { class: 'method m-' + (req?.meta?.method || 'GET') }, req?.meta?.method || 'GET'),
-    h('span', {}, h('span', { class: 'name' }, t.name), h('small', {}, `${req?.meta?.name || 'request'} · ${req?.col?.name || 'collection'}`)),
-    h('span', { class: 'tmBadge ' + (passed === false ? 'bad' : passed === true ? 'ok' : '') }, passed === false ? 'FAIL' : passed === true ? 'PASS' : (t.xrayKey || 'NEW')));
+    h('span', { class: 'nm' }, t.name),
+    t.xrayKey ? h('span', { class: 'xrayTag', title: 'Linked to ' + t.xrayKey }, t.xrayKey) : h('span', { class: 'unlinkedDot', title: 'No Xray link' }));
 }
 function renderTestsDashboard() {
   const tests = allManagedTests();
@@ -1503,17 +1628,34 @@ async function openTest(id) {
   S.testId = id; S.testSetId = null;
   try {
     const test = await api('/api/tests/' + id);
+    await ensureTestRequestSpec(test);
     const idx = (S.tm?.tests || []).findIndex(t => String(t.id) === String(test.id));
     if (idx >= 0) S.tm.tests[idx] = test; else await loadTestsState();
     renderSide(); renderTestEditor(test);
   } catch (e) { toast(e.message, true); }
+}
+async function ensureTestRequestSpec(test) {
+  if (test.request?.url && test.request?.method) return test.request;
+  const base = await api('/api/requests/' + test.requestId);
+  const spec = base.spec || {};
+  test.request = {
+    name: spec.name || test.name,
+    method: spec.method || 'GET',
+    url: spec.url || '',
+    query: spec.query || {},
+    headers: { ...(spec.headers || {}) },
+    auth: spec.auth || null,
+    body: spec.body || { type: 'json', content: '' },
+  };
+  return test.request;
 }
 function renderTestEditor(sourceTest) {
   const meta = findReqInTests(sourceTest.requestId);
   const test = { ...sourceTest, assertions: (sourceTest.assertions || []).map(uiAssertion) };
   $('meta').hidden = true;
   $('crumb').innerHTML = '';
-  $('crumb').append('Test Management / ', h('b', {}, test.name));
+  $('crumb').append(meta?.col?.name || 'Workspace', h('span', { class: 'sep' }, ' / '), h('b', {}, test.name));
+  renderTestsTopbar(test);
   const work = $('work'); work.innerHTML = '';
   const save = debounce(async () => {
     try {
@@ -1522,6 +1664,8 @@ function renderTestEditor(sourceTest) {
       renderSide();
     } catch (e) { toast(e.message, true); }
   }, 350);
+  renderHandoffTestEditor(test, meta, save);
+  return;
   const shell = h('div', { class: 'tmEditor' });
   const main = h('div', { class: 'tmMain' });
   main.append(h('section', { class: 'card tmCard' },
@@ -1561,6 +1705,247 @@ function renderTestEditor(sourceTest) {
     last ? renderStepList(last.steps || [], last) : h('div', { class: 'note' }, 'Run this test to capture assertion/script step results.')));
   shell.append(main, renderTestRunRail(test));
   work.append(shell);
+}
+function renderHandoffTestEditor(test, meta, save) {
+  const work = $('work'); work.innerHTML = '';
+  work.append(renderIdentityPanel(test, meta, save));
+  work.append(renderRequestOverridePanel(test, save));
+  work.append(renderAssertionPanel(test, save));
+  work.append(renderTracePanel(test, meta, save));
+  work.append(renderLastRunPanel(test, lastRunForTest(test.id)));
+  renderTestMetaRail(test);
+}
+function renderIdentityPanel(test, meta, save) {
+  const tags = h('div', { class: 'tagWrap' });
+  const renderTags = () => {
+    tags.innerHTML = '';
+    for (const tag of test.tags || []) tags.append(h('span', { class: 'tmTagChip' }, tag,
+      h('button', { onclick: () => { test.tags = (test.tags || []).filter(t => t !== tag); save(); renderTags(); } }, 'x')));
+    tags.append(h('button', { class: 'tmAddTag', onclick: async () => {
+      const v = await modal.prompt('Add tag'); if (!v) return;
+      test.tags = [...(test.tags || []), v.trim().toLowerCase()]; save(); renderTags();
+    } }, '+ tag'));
+  };
+  renderTags();
+  const prio = h('select', { onchange: e => { test.priority = e.target.value; save(); renderTestEditor(test); } },
+    ['low', 'med', 'high', 'critical'].map(p => h('option', { value: p, selected: (test.priority || 'med') === p ? '' : undefined }, p)));
+  return h('section', { class: 'tmPanel' },
+    h('div', { class: 'tmSecHd' }, 'Identity', h('span', { class: 'grow' }),
+      h('button', { class: 'tmToggle' + (test.enabled ? ' on' : ''), title: test.enabled ? 'Enabled' : 'Disabled',
+        onclick: () => { test.enabled = !test.enabled; save(); renderTestEditor(test); } })),
+    h('div', { class: 'tmSecBody' },
+      h('div', { class: 'tmIdTop' },
+        h('input', { class: 'tmTestName', type: 'text', value: test.name, oninput: e => { test.name = e.target.value; save(); } }),
+        h('span', { class: 'method m-' + (meta?.meta?.method || 'GET') }, meta?.meta?.method || 'GET'),
+        h('span', { class: 'prio ' + (test.priority || 'med') }, (test.priority || 'med').toUpperCase())),
+      h('div', { class: 'tmIdGrid' },
+        h('div', { class: 'tmKey' }, 'Source'),
+        h('span', { class: 'tmSrcPill', title: meta?.meta?.url || '' },
+          h('span', { class: 'pathtxt' }, testSourcePath(test, meta)),
+          h('span', { class: 'sot' }, 'REQ')),
+        h('div', { class: 'tmKey' }, 'Endpoint'),
+        endpointSelect(test, save),
+        h('div', { class: 'tmKey' }, 'Owner'),
+        h('input', { type: 'text', class: 'mono', value: test.owner || '', placeholder: 'risk-platform', oninput: e => { test.owner = e.target.value; save(); } }),
+        h('div', { class: 'tmKey' }, 'Priority'),
+        h('div', { class: 'tmInline' }, prio, testFolderSelect(test, save)),
+        h('div', { class: 'tmKey' }, 'Tags'),
+        tags)));
+}
+function renderRequestOverridePanel(test, save) {
+  const req = test.request || (test.request = { method: 'GET', url: '', headers: {}, body: { type: 'json', content: '' } });
+  req.headers = req.headers || {};
+  req.body = req.body || { type: 'json', content: '' };
+  const bodyTypes = ['json', 'xml', 'raw', 'urlencoded', 'formdata'];
+  const table = h('table', { class: 'tmHeaderTable' },
+    h('thead', {}, h('tr', {}, h('th', {}, 'Header'), h('th', {}, 'Value'), h('th', { style: 'width:30px' }, ''))),
+    h('tbody', {}, ...Object.entries(req.headers).map(([k, v]) => headerRow(test, req, k, v, save))));
+  return h('section', { class: 'tmPanel' },
+    h('div', { class: 'tmSecHd' }, 'Request under test', h('span', { class: 'grow' }), h('span', { class: 'tmBadge' }, 'per test')),
+    h('div', { class: 'tmSecBody' },
+      h('div', { class: 'tmRequestGrid' },
+        h('div', { class: 'tmKey' }, 'Method'),
+        h('select', { onchange: e => { req.method = e.target.value; save(); } },
+          METHODS.map(m => h('option', { value: m, selected: (req.method || 'GET').toUpperCase() === m ? '' : undefined }, m))),
+        h('div', { class: 'tmKey' }, 'URL'),
+        h('input', { type: 'text', class: 'mono', value: req.url || '', placeholder: 'https://api.example.test/resource',
+          oninput: e => { req.url = e.target.value; save(); } }),
+        h('div', { class: 'tmKey' }, 'Body type'),
+        h('select', { onchange: e => { req.body.type = e.target.value; save(); renderTestEditor(test); } },
+          bodyTypes.map(t => h('option', { value: t, selected: (req.body.type || 'json') === t ? '' : undefined }, t))),
+        h('div', { class: 'tmKey' }, 'Body'),
+        h('textarea', { spellcheck: 'false', placeholder: '{ \"id\": \"{{testIdNumber}}\" }',
+          oninput: e => { req.body.content = e.target.value; save(); } }, req.body.content || '')),
+      h('div', { class: 'tmSecHd', style: 'margin:14px -14px 0' }, 'Headers', h('span', { class: 'n' }, String(Object.keys(req.headers).length)), h('span', { class: 'grow' }),
+        h('button', { class: 'btn sm', onclick: () => { req.headers['New-Header'] = ''; save(); renderTestEditor(test); } }, '+ Header')),
+      table));
+}
+function headerRow(test, req, key, value, save) {
+  return h('tr', {},
+    h('td', {}, h('input', { type: 'text', value: key, oninput: e => {
+      const next = e.target.value;
+      if (next === key) return;
+      const val = req.headers[key];
+      delete req.headers[key];
+      req.headers[next] = val;
+      key = next;
+      save();
+    } })),
+    h('td', {}, h('input', { type: 'text', value, oninput: e => { req.headers[key] = e.target.value; save(); } })),
+    h('td', {}, h('button', { class: 'delRow', onclick: () => { delete req.headers[key]; save(); renderTestEditor(test); } }, 'x')));
+}
+function renderAssertionPanel(test, save) {
+  return h('section', { class: 'tmPanel' },
+    h('div', { class: 'tmSecHd' }, 'Assertions', h('span', { class: 'n' }, String((test.assertions || []).length)), h('span', { class: 'grow' })),
+    h('div', { class: 'tmSecBody tmAssertionWrap' }, buildAssertionsEditor({ id: test.id, spec: test }, test, save)),
+    h('div', { class: 'tmSecHd' }, 'Script assertion', h('span', { class: 'grow' }), h('span', { class: 'tmBadge' }, 'pm.test')),
+    h('div', { class: 'tmSecBody' }, h('textarea', { class: 'scriptEd', placeholder: 'pm.test(\"response is valid\", () => { pm.expect(pm.response.code).to.eql(200); });',
+      oninput: e => { test.scriptTests = e.target.value; save(); } }, test.scriptTests || '')));
+}
+function renderTracePanel(test, meta, save) {
+  const x = S.tm?.xray || {};
+  const linked = !!test.xrayKey;
+  return h('section', { class: 'tmPanel' },
+    h('div', { class: 'tmSecHd' }, 'Traceability', h('span', { class: 'grow' }),
+      linked ? h('span', { class: 'valMsg ok' }, 'linked') : h('span', { class: 'valMsg bad' }, 'not linked')),
+    h('div', { class: 'tmSecBody' },
+      h('div', { class: 'tmTraceGrid' },
+        h('div', { class: 'tmKey' }, 'Xray test'),
+        h('input', { type: 'text', class: 'keyInput mono', value: test.xrayKey || '', placeholder: 'AML-T142',
+          oninput: e => { test.xrayKey = e.target.value.trim().toUpperCase(); save(); } }),
+        h('div', { class: 'tmKey' }, 'Requirements'),
+        tokenEditor(test.requirements || [], vals => { test.requirements = vals; save(); }, 'Add issue key'),
+        h('div', { class: 'tmKey' }, 'Test plan'),
+        h('input', { type: 'text', class: 'keyInput mono', value: test.testPlanKey || '', placeholder: x.testPlanKey ? x.testPlanKey + ' (inherited)' : 'AML-P1',
+          oninput: e => { test.testPlanKey = e.target.value.trim().toUpperCase(); save(); } })),
+      h('div', { class: 'traceActions' },
+        h('button', { class: 'btn sm', onclick: () => validateXrayTest(test) }, 'Validate link'),
+        h('button', { class: 'btn sm', onclick: () => createXrayTest(test) }, linked ? 'Create/update steps' : 'Create Xray test'),
+        h('button', { class: 'btn sm', onclick: () => linkRequirements(test) }, 'Link requirements')),
+      h('div', { class: 'tmCoverage' },
+        coverageNode('Request', meta?.meta?.name || 'request', true),
+        coverageNode('Relay test', test.name, true),
+        coverageNode('Xray', test.xrayKey || 'missing link', linked),
+        coverageNode('Plan', test.testPlanKey || x.testPlanKey || 'inherited', true))));
+}
+function coverageNode(label, value, ok) {
+  return h('div', { class: 'tmCovNode ' + (ok ? 'good' : 'bad') },
+    h('span', { class: 'lbl' }, label),
+    h('span', { class: 'val' }, ok ? 'ok' : 'gap', h('span', {}, value)));
+}
+function renderLastRunPanel(test, last) {
+  return h('section', { class: 'tmPanel' },
+    h('div', { class: 'tmSecHd' }, 'Last run', h('span', { class: 'grow' }),
+      last ? h('span', { class: 'pill ' + (last.status === 'PASSED' ? 'ok' : 'bad') }, h('span', { class: 'dot' }), last.status) : h('span', { class: 'tmStatus warn' }, 'NOT RUN')),
+    last ? h('div', {},
+      h('div', { class: 'tmRunMeta' },
+        h('span', {}, h('span', { class: 'lbl' }, 'HTTP'), ' ', last.status),
+        h('span', {}, h('span', { class: 'lbl' }, 'Time'), ' ', (last.durationMs || 0).toFixed(0), 'ms'),
+        h('span', {}, h('span', { class: 'lbl' }, 'Env'), ' ', S.envName || 'none')),
+      renderStepList(last.steps || [], last)) :
+      h('div', { class: 'tmSecBody note' }, 'Run this test to capture assertion and script step results.'));
+}
+function renderTestMetaRail(test) {
+  const meta = $('meta'); meta.hidden = false; meta.innerHTML = '';
+  const scope = S.tmRunScope || 'selected';
+  const scopeBtn = (val, label) => h('button', { class: 'att' + (scope === val ? ' on' : ''), onclick: () => { S.tmRunScope = val; renderTestMetaRail(test); } }, label);
+  const selected = scopeTests(test);
+  const linked = selected.filter(t => t.xrayKey).length;
+  meta.append(
+    h('h3', {}, 'Run & push'),
+    h('div', { class: 'tmMetaCard' },
+      h('span', { class: 'lbl' }, 'Run scope'),
+      h('div', { class: 'tmScopeChips' }, scopeBtn('selected', 'Selected'), scopeBtn('folder', 'Folder'), scopeBtn('collection', 'Collection')),
+      h('div', { class: 'willRun' }, `${selected.length} test${selected.length === 1 ? '' : 's'} will run`),
+      h('button', { class: 'btn dark tmFullBtn', onclick: () => runManagedScope() }, 'Run')),
+    h('div', { class: 'tmMetaCard' },
+      h('span', { class: 'lbl' }, 'Push to Xray'),
+      h('div', { class: 'willRun' }, `${linked} linked, ${selected.length - linked} to create/skip`),
+      h('button', { class: 'btn tmFullBtn', onclick: () => pushXray(scopePayload(test)) }, 'Push execution')),
+    h('div', { class: 'tmMetaCard' },
+      h('span', { class: 'lbl' }, 'Export results'),
+      h('button', { class: 'btn', onclick: () => openTmExport(test, 'junit') }, 'JUnit XML'),
+      h('button', { class: 'btn', onclick: () => openTmExport(test, 'json') }, 'Relay JSON'),
+      h('button', { class: 'btn', onclick: () => openTmExport(test, 'xray') }, 'Xray JSON')),
+    h('div', { class: 'tmMetaCard' },
+      h('span', { class: 'lbl' }, 'Xray connection'),
+      h('div', { class: 'connLine ' + (S.tm?.xray?.credentials?.hasClientId ? 'ok' : 'idle') },
+        (S.tm?.xray?.credentials?.source || 'not configured')),
+      h('button', { class: 'btn', onclick: testXrayConnection }, 'Test connection')));
+}
+function scopeTests(test) {
+  const scope = S.tmRunScope || 'selected';
+  if (scope === 'selected') return [test];
+  if (scope === 'folder') return allManagedTests().filter(t => String(t.folderId || '') === String(test.folderId || '') && t.enabled);
+  return allManagedTests().filter(t => t.enabled);
+}
+function scopePayload(test) {
+  const scope = S.tmRunScope || 'selected';
+  if (scope === 'selected') return { testIds: [test.id] };
+  if (scope === 'folder') return { testIds: scopeTests(test).map(t => t.id) };
+  return {};
+}
+async function runManagedScope(force) {
+  const test = findTest(S.testId);
+  if (!test) return toast('Select a test first', true);
+  if (force) S.tmRunScope = force;
+  const btn = $('runBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Running...'; }
+  if ((S.tmRunScope || 'selected') === 'selected') {
+    await runSingleManagedTest(test);
+  } else {
+    await runManagedTests(scopePayload(test));
+  }
+  if (btn) { btn.disabled = false; btn.textContent = 'Run'; }
+}
+async function duplicateManagedTest(test) {
+  try {
+    const clone = { ...test, id: 0, name: test.name + ' (copy)' };
+    const created = await api('/api/tests', { method: 'POST', body: clone });
+    await loadTestsState(); openTest(created.id); toast('Duplicated test');
+  } catch (e) { toast(e.message, true); }
+}
+function testSourcePath(test, meta) {
+  const col = slugify(meta?.col?.name || 'collection');
+  const name = slugify(test.name || 'test');
+  return `collections/${col}/${name}.req.toml`;
+}
+function openTmExport(test, fmt) {
+  const tests = scopeTests(test);
+  const body = fmt === 'junit' ? buildTmJUnit(tests) : JSON.stringify(buildTmExport(tests, fmt), null, 2);
+  modal.prompt(fmt === 'junit' ? 'JUnit XML' : fmt === 'xray' ? 'Xray JSON' : 'Relay JSON', { value: body, multiline: true, ok: 'Close' });
+}
+function buildTmExport(tests, fmt) {
+  if (fmt === 'xray') return {
+    testExecutionKey: null,
+    info: {
+      summary: 'Relay Test Management execution',
+      project: S.tm?.xray?.projectKey || '',
+      testPlanKey: S.tm?.xray?.testPlanKey || '',
+      testEnvironments: [S.envName || 'local'],
+    },
+    tests: tests.map(t => {
+      const run = lastRunForTest(t.id);
+      return {
+        testKey: t.xrayKey || undefined,
+        status: testPassed(t) === false ? 'FAILED' : testPassed(t) === true ? 'PASSED' : 'TODO',
+        comment: run?.error || undefined,
+        steps: (run?.steps || []).map(st => ({
+          status: st.passed ? 'PASSED' : 'FAILED',
+          comment: st.message || st.name,
+          actualResult: st.actual || st.message || '',
+        })),
+      };
+    }),
+  };
+  return tests.map(t => ({ id: t.id, name: t.name, xrayTest: t.xrayKey || null, result: testPassed(t) === false ? 'failed' : testPassed(t) === true ? 'passed' : 'untested' }));
+}
+function buildTmJUnit(tests) {
+  const fails = tests.filter(t => testPassed(t) === false).length;
+  return '<?xml version="1.0" encoding="UTF-8"?>\n' +
+    `<testsuite name="Relay Test Management" tests="${tests.length}" failures="${fails}">\n` +
+    tests.map(t => `  <testcase classname="${t.xrayKey || 'relay'}" name="${escHtml(t.name)}"${testPassed(t) === false ? '><failure/></testcase>' : ' />'}`).join('\n') +
+    '\n</testsuite>\n';
 }
 function endpointSelect(test, save) {
   const sel = h('select', { onchange: e => { test.requestId = parseInt(e.target.value, 10); save(); renderTestEditor(test); } });
@@ -1619,6 +2004,7 @@ function renderTestRunRail(test) {
 async function runSingleManagedTest(test) {
   try {
     const r = await api('/api/tests/' + test.id + '/run', { method: 'POST', body: { env: S.envName } });
+    if (r.send) S.lastTestRun = { id: test.id, result: r.send };
     toast(r.passed ? 'Test passed' : 'Test failed', !r.passed);
     await loadTestsState(); renderTestEditor(findTest(test.id));
   } catch (e) { toast(e.message, true); }

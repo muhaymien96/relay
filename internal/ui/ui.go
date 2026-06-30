@@ -841,6 +841,9 @@ func (s *Server) handleXrayPush(w http.ResponseWriter, r *http.Request) {
 		Env          string  `json:"env"`
 		Summary      string  `json:"summary"`
 		RequestIDs   []int64 `json:"requestIds,omitempty"`
+		TestIDs      []int64 `json:"testIds,omitempty"`
+		RequestID    int64   `json:"requestId,omitempty"`
+		TestSetID    int64   `json:"testSetId,omitempty"`
 		Tags         string  `json:"tags,omitempty"`
 		DryRun       bool    `json:"dryRun,omitempty"`
 	}
@@ -851,6 +854,65 @@ func (s *Server) handleXrayPush(w http.ResponseWriter, r *http.Request) {
 	cfg, xs, err := s.xrayConfig()
 	if err != nil {
 		httpError(w, 422, err)
+		return
+	}
+	client := xray.New(cfg)
+
+	if len(in.TestIDs) > 0 || in.RequestID != 0 || in.TestSetID != 0 {
+		tests, err := s.selectedTests(in.TestIDs, in.RequestID, 0, nil, in.TestSetID)
+		if err != nil {
+			httpError(w, 422, err)
+			return
+		}
+		started := time.Now()
+		results := make([]tm.TestResult, 0, len(tests))
+		for _, tc := range tests {
+			if !tc.Enabled {
+				continue
+			}
+			res, err := s.runTestCaseValue(r.Context(), tc, in.Env, true)
+			status := tm.StatusPASS
+			comment := ""
+			if err != nil || !res.Passed {
+				status = tm.StatusFAIL
+				comment = res.Error
+			}
+			steps := tmStepsFromStore(res.Steps)
+			if tc.XrayKey == "" {
+				if xs.ProjectKey == "" {
+					httpError(w, 422, fmt.Errorf("set Xray project key before auto-creating tests"))
+					return
+				}
+				key, err := client.CreateTest(tm.NewTest{ProjectKey: xs.ProjectKey, Summary: tc.Name, TestType: "Manual", Steps: testStepsText(tc.Assertions)})
+				if err != nil {
+					httpError(w, 502, err)
+					return
+				}
+				tc.XrayKey = key
+				_ = s.DB.UpdateTestCase(&tc)
+			}
+			results = append(results, tm.TestResult{
+				TestKey:    tc.XrayKey,
+				Name:       tc.Name,
+				Status:     status,
+				Comment:    comment,
+				DurationMs: res.DurationMs,
+				Steps:      steps,
+			})
+		}
+		summary := in.Summary
+		if summary == "" {
+			summary = "Relay Test Management execution"
+		}
+		key, err := client.PushExecution(tm.Execution{
+			ProjectKey: xs.ProjectKey, TestPlanKey: xs.TestPlanKey, Summary: summary,
+			StartedAt: started, FinishedAt: time.Now(), Results: results,
+		})
+		if err != nil {
+			httpError(w, 502, fmt.Errorf("xray push failed: %w", err))
+			return
+		}
+		writeJSON(w, map[string]string{"executionKey": key})
 		return
 	}
 
@@ -864,8 +926,6 @@ func (s *Server) handleXrayPush(w http.ResponseWriter, r *http.Request) {
 		httpError(w, 422, fmt.Errorf("no tests match the selected scope"))
 		return
 	}
-
-	client := xray.New(cfg)
 
 	if in.DryRun {
 		rows := make([]pushMappingRow, 0, len(requests))
@@ -982,6 +1042,21 @@ func tmStepsFromSend(out *sendResult) []tm.TestStep {
 			Type:    "script",
 			Status:  status,
 			Comment: st.Error,
+		})
+	}
+	return steps
+}
+
+func tmStepsFromStore(in []store.TestStepResult) []tm.TestStep {
+	steps := make([]tm.TestStep, 0, len(in))
+	for _, st := range in {
+		status := tm.StatusPASS
+		if !st.Passed {
+			status = tm.StatusFAIL
+		}
+		steps = append(steps, tm.TestStep{
+			Name: st.Name, Type: st.Type, Expected: st.Expected, Actual: st.Actual,
+			Status: status, Comment: st.Message,
 		})
 	}
 	return steps

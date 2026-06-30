@@ -44,6 +44,7 @@ type Execution struct {
 
 // TestRef identifies an existing test issue found in the TM system.
 type TestRef struct {
+	IssueID string
 	Key     string // e.g. "AML-T142"
 	Summary string
 }

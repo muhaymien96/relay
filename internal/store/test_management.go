@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS test_cases (
 	xray_key      TEXT NOT NULL DEFAULT '',
 	requirements  TEXT NOT NULL DEFAULT '[]',
 	test_plan_key TEXT NOT NULL DEFAULT '',
+	request_spec  TEXT NOT NULL DEFAULT '{}',
 	assertions    TEXT NOT NULL DEFAULT '[]',
 	script_tests  TEXT NOT NULL DEFAULT '',
 	updated_at    TEXT NOT NULL
@@ -90,6 +91,7 @@ type TestCase struct {
 	XrayKey      string          `json:"xrayKey,omitempty"`
 	Requirements []string        `json:"requirements,omitempty"`
 	TestPlanKey  string          `json:"testPlanKey,omitempty"`
+	Request      *dsl.Request    `json:"request,omitempty"`
 	Assertions   []dsl.Assertion `json:"assertions,omitempty"`
 	ScriptTests  string          `json:"scriptTests,omitempty"`
 	UpdatedAt    time.Time       `json:"updatedAt"`
@@ -128,8 +130,11 @@ type XrayCredentialStatus struct {
 }
 
 func (s *Store) ensureTestManagement() error {
-	_, err := s.db.Exec(testManagementSchema)
-	return err
+	if _, err := s.db.Exec(testManagementSchema); err != nil {
+		return err
+	}
+	_, _ = s.db.Exec(`ALTER TABLE test_cases ADD COLUMN request_spec TEXT NOT NULL DEFAULT '{}'`)
+	return nil
 }
 
 func (s *Store) EnsureDefaultTestCases() error {
@@ -162,6 +167,7 @@ func (s *Store) EnsureDefaultTestCases() error {
 			Priority:     spec.Priority,
 			XrayKey:      spec.XrayKey,
 			Requirements: append([]string(nil), spec.Requirements...),
+			Request:      testRequestSpec(spec),
 			Assertions:   append([]dsl.Assertion(nil), spec.Assertions...),
 		}
 		if spec.Scripts != nil {
@@ -189,6 +195,33 @@ func defaultTestName(spec dsl.Request) string {
 		return "Default test"
 	}
 	return spec.Name + " - default"
+}
+
+func testRequestSpec(spec dsl.Request) *dsl.Request {
+	req := &dsl.Request{
+		Name:    spec.Name,
+		Method:  spec.Method,
+		URL:     spec.URL,
+		Query:   copyStringMap(spec.Query),
+		Headers: copyStringMap(spec.Headers),
+		Auth:    spec.Auth,
+		Body:    spec.Body,
+	}
+	if req.Method == "" {
+		req.Method = "GET"
+	}
+	return req
+}
+
+func copyStringMap(in map[string]string) map[string]string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }
 
 func (s *Store) TestFolders() ([]TestFolder, error) {
@@ -249,7 +282,7 @@ func (s *Store) TestCases() ([]TestCase, error) {
 	if err := s.EnsureDefaultTestCases(); err != nil {
 		return nil, err
 	}
-	rows, err := s.db.Query(`SELECT id, request_id, folder_id, name, enabled, tags, owner, priority, xray_key, requirements, test_plan_key, assertions, script_tests, updated_at FROM test_cases ORDER BY id`)
+	rows, err := s.db.Query(`SELECT id, request_id, folder_id, name, enabled, tags, owner, priority, xray_key, requirements, test_plan_key, request_spec, assertions, script_tests, updated_at FROM test_cases ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -269,7 +302,7 @@ func (s *Store) TestCasesForRequest(requestID int64) ([]TestCase, error) {
 	if err := s.EnsureDefaultTestCases(); err != nil {
 		return nil, err
 	}
-	rows, err := s.db.Query(`SELECT id, request_id, folder_id, name, enabled, tags, owner, priority, xray_key, requirements, test_plan_key, assertions, script_tests, updated_at FROM test_cases WHERE request_id = ? ORDER BY id`, requestID)
+	rows, err := s.db.Query(`SELECT id, request_id, folder_id, name, enabled, tags, owner, priority, xray_key, requirements, test_plan_key, request_spec, assertions, script_tests, updated_at FROM test_cases WHERE request_id = ? ORDER BY id`, requestID)
 	if err != nil {
 		return nil, err
 	}
@@ -289,7 +322,7 @@ func (s *Store) TestCase(id int64) (*TestCase, error) {
 	if err := s.EnsureDefaultTestCases(); err != nil {
 		return nil, err
 	}
-	row := s.db.QueryRow(`SELECT id, request_id, folder_id, name, enabled, tags, owner, priority, xray_key, requirements, test_plan_key, assertions, script_tests, updated_at FROM test_cases WHERE id = ?`, id)
+	row := s.db.QueryRow(`SELECT id, request_id, folder_id, name, enabled, tags, owner, priority, xray_key, requirements, test_plan_key, request_spec, assertions, script_tests, updated_at FROM test_cases WHERE id = ?`, id)
 	tc, err := scanTestCase(row)
 	if err != nil {
 		return nil, err
@@ -305,8 +338,8 @@ func scanTestCase(row testCaseScanner) (TestCase, error) {
 	var tc TestCase
 	var folder sql.NullInt64
 	var enabled int
-	var tags, reqs, assertions, updated string
-	if err := row.Scan(&tc.ID, &tc.RequestID, &folder, &tc.Name, &enabled, &tags, &tc.Owner, &tc.Priority, &tc.XrayKey, &reqs, &tc.TestPlanKey, &assertions, &tc.ScriptTests, &updated); err != nil {
+	var tags, reqs, requestSpec, assertions, updated string
+	if err := row.Scan(&tc.ID, &tc.RequestID, &folder, &tc.Name, &enabled, &tags, &tc.Owner, &tc.Priority, &tc.XrayKey, &reqs, &tc.TestPlanKey, &requestSpec, &assertions, &tc.ScriptTests, &updated); err != nil {
 		return tc, err
 	}
 	if folder.Valid {
@@ -315,6 +348,10 @@ func scanTestCase(row testCaseScanner) (TestCase, error) {
 	tc.Enabled = enabled != 0
 	tc.Tags = unj[[]string](tags)
 	tc.Requirements = unj[[]string](reqs)
+	req := unj[dsl.Request](requestSpec)
+	if req.Method != "" || req.URL != "" || len(req.Headers) > 0 || req.Body != nil {
+		tc.Request = &req
+	}
 	tc.Assertions = unj[[]dsl.Assertion](assertions)
 	tc.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updated)
 	return tc, nil
@@ -330,10 +367,10 @@ func (s *Store) CreateTestCase(tc *TestCase) error {
 	if strings.TrimSpace(tc.Name) == "" {
 		tc.Name = "Untitled test"
 	}
-	res, err := s.db.Exec(`INSERT INTO test_cases (request_id, folder_id, name, enabled, tags, owner, priority, xray_key, requirements, test_plan_key, assertions, script_tests, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	res, err := s.db.Exec(`INSERT INTO test_cases (request_id, folder_id, name, enabled, tags, owner, priority, xray_key, requirements, test_plan_key, request_spec, assertions, script_tests, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		tc.RequestID, tc.FolderID, strings.TrimSpace(tc.Name), boolInt(tc.Enabled), j(tc.Tags), tc.Owner, tc.Priority,
-		tc.XrayKey, j(tc.Requirements), tc.TestPlanKey, j(tc.Assertions), tc.ScriptTests, now())
+		tc.XrayKey, j(tc.Requirements), tc.TestPlanKey, j(tc.Request), j(tc.Assertions), tc.ScriptTests, now())
 	if err != nil {
 		return err
 	}
@@ -355,10 +392,10 @@ func (s *Store) UpdateTestCase(tc *TestCase) error {
 		return fmt.Errorf("test case needs a name")
 	}
 	_, err := s.db.Exec(`UPDATE test_cases
-		SET request_id = ?, folder_id = ?, name = ?, enabled = ?, tags = ?, owner = ?, priority = ?, xray_key = ?, requirements = ?, test_plan_key = ?, assertions = ?, script_tests = ?, updated_at = ?
+		SET request_id = ?, folder_id = ?, name = ?, enabled = ?, tags = ?, owner = ?, priority = ?, xray_key = ?, requirements = ?, test_plan_key = ?, request_spec = ?, assertions = ?, script_tests = ?, updated_at = ?
 		WHERE id = ?`,
 		tc.RequestID, tc.FolderID, strings.TrimSpace(tc.Name), boolInt(tc.Enabled), j(tc.Tags), tc.Owner, tc.Priority,
-		tc.XrayKey, j(tc.Requirements), tc.TestPlanKey, j(tc.Assertions), tc.ScriptTests, now(), tc.ID)
+		tc.XrayKey, j(tc.Requirements), tc.TestPlanKey, j(tc.Request), j(tc.Assertions), tc.ScriptTests, now(), tc.ID)
 	return err
 }
 

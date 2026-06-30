@@ -326,7 +326,8 @@ func (c *Client) GetTest(key string) (*tm.TestRef, error) {
 	var parsed struct {
 		GetTests struct {
 			Results []struct {
-				Jira map[string]any `json:"jira"`
+				IssueID string         `json:"issueId"`
+				Jira    map[string]any `json:"jira"`
 			} `json:"results"`
 		} `json:"getTests"`
 	}
@@ -337,7 +338,7 @@ func (c *Client) GetTest(key string) (*tm.TestRef, error) {
 		return nil, nil
 	}
 	j := parsed.GetTests.Results[0].Jira
-	ref := &tm.TestRef{}
+	ref := &tm.TestRef{IssueID: parsed.GetTests.Results[0].IssueID}
 	if k, ok := j["key"].(string); ok {
 		ref.Key = k
 	}
@@ -345,6 +346,31 @@ func (c *Client) GetTest(key string) (*tm.TestRef, error) {
 		ref.Summary = s
 	}
 	return ref, nil
+}
+
+func (c *Client) UpdateTest(ref tm.TestRef, t tm.NewTest) error {
+	if ref.IssueID == "" {
+		return fmt.Errorf("xray: missing issueId for %s", ref.Key)
+	}
+	testType := t.TestType
+	if testType == "" {
+		testType = "Generic"
+	}
+	_, err := c.doGQL(`
+	mutation UpdateTest($issueId: String!, $testType: UpdateTestTypeInput, $unstructured: String, $jira: JSON!) {
+		updateTest(issueId: $issueId, testType: $testType, unstructured: $unstructured, jira: $jira) {
+			test { issueId jira(fields: ["key"]) }
+			warnings
+		}
+	}`, map[string]any{
+		"issueId":      ref.IssueID,
+		"testType":     map[string]any{"name": testType},
+		"unstructured": t.Steps,
+		"jira": map[string]any{"fields": map[string]any{
+			"summary": t.Summary,
+		}},
+	})
+	return err
 }
 
 // CreateTest creates a new Xray test issue and returns its Jira key.
